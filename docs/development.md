@@ -1,9 +1,10 @@
 # Go development and build workflow
 
 This is a foundation, not a production manager. The Go executable supports only
-`help`, `--help`, `-h`, `version`, and `--version`; all management commands return
-a nonzero error. No Go command runs the legacy manager, reads server
-configuration, or launches Minecraft.
+`help`, `--help`, `-h`, `version`, `--version`, and Cobra-generated `completion`;
+all management commands return a nonzero error. Viper reads the small native
+configuration schema described below. No Go command runs the legacy manager,
+reads legacy server configuration, or launches Minecraft.
 
 ## Toolchain and dependencies
 
@@ -13,8 +14,9 @@ CI sets `GOTOOLCHAIN=local` and installs that version using `actions/setup-go`,
 so it cannot silently upgrade the compiler. All CI actions are pinned to commit
 SHAs.
 
-The application and tests use only the standard library. There is no `go.sum`
-until a module dependency is added. `govulncheck` is a separate, version-pinned
+The CLI uses [Cobra](https://github.com/spf13/cobra) v1.10.2 and configuration
+uses [Viper](https://github.com/spf13/viper) v1.21.0. Dependencies are pinned in
+`go.mod` and verified by `go.sum`. `govulncheck` is a separate, version-pinned
 CI tool (`v1.8.0`), not a dependency linked into the binary. Dependabot checks
 module and action updates; compiler and scanner updates still require an
 explicit reviewed change.
@@ -53,8 +55,10 @@ CGO_ENABLED=0 go build -trimpath \
 
 A plain `go build` reports `go-port-dev` and commit `unknown`; the reproducible
 CI builds explicitly inject their full source commit. No build timestamp is
-injected. Unimplemented commands return exit code 65, and output-write failures
-return 1.
+injected. Cobra command/flag errors, configuration errors, and errors returned
+by `RunE` return exit code 1, printed once to stderr. This replaces the
+foundation's interim exit code 65; the full legacy exit taxonomy remains P14
+work. Cobra owns help/completion output behavior.
 
 Cross-compile by setting `GOOS` and `GOARCH` on the same build command:
 
@@ -71,7 +75,9 @@ been validated on every machine. P04 and P16 own that validation.
 ## Small code structure
 
 - `cmd/msm`: executable entry point.
-- `internal/cli`: argument handling, separate stdout/stderr, explicit exit codes.
+- `internal/cli`: Cobra command constructors, persistent flags, separate
+  stdout/stderr, and the executable error/exit boundary.
+- `internal/config`: per-invocation Viper setup and typed native settings.
 - `internal/buildinfo`: injected version and commit metadata.
 - `internal/process`: a small direct-exec boundary for future short-lived
   adapters, with explicit arguments, working directory and environment.
@@ -80,8 +86,78 @@ been validated on every machine. P04 and P16 own that validation.
   fixture copying; used by tests only, not imported into `cmd/msm`.
 - `compatibility`: Go tests verifying P01 source inventories and safe fixtures.
 
-Do not add a package for every future feature in advance. Add the configuration,
-screen and manager packages when their implementing tasks need them.
+Do not add a package for every future feature in advance. Add screen and
+manager packages when their implementing tasks need them.
+
+## Cobra and Viper conventions
+
+Follow [Cobra's flag guidance](https://cobra.dev/docs/how-to-guides/working-with-flags/)
+and [Viper's documented configuration patterns](https://github.com/spf13/viper).
+Do not introduce a second argument parser or configuration framework.
+
+- Construct commands with `NewRootCommand` and small command constructors;
+  register children using `AddCommand`. Use `Use`, `Short`, argument validators
+  such as `cobra.NoArgs`, and `RunE` to return errors.
+- Keep `os.Exit` in `main`. `SilenceErrors` and `SilenceUsage` prevent duplicate
+  error output; the outer `Run` function prints execution errors once.
+- Let Cobra generate help and shell completion. Built-in completion covers the
+  current command tree, not future dynamic server/world names. PowerShell
+  completion generation does not imply Windows runtime support.
+- Define persistent flags on the root. Bind configuration flags with
+  `BindPFlag` after defining them; do not copy flag defaults using `viper.Set`.
+- Create a private `viper.New()` instance for every command tree. No package
+  globals, `init()` registration, global `OnInitialize` hooks, or configuration
+  watchers are needed. Execute each tree once.
+- Load configuration in `PersistentPreRunE`, after flag parsing. Use
+  `UnmarshalExact` and `mapstructure` tags for typed settings; register defaults
+  for each new key so environment-only settings participate in unmarshalling.
+- Pass typed settings to future services, rather than sharing mutable Viper
+  instances across goroutines. Keep filesystem/process behavior out of command
+  constructors, and test with fresh commands and isolated configuration homes.
+
+Future command work must preserve the P01 server-first syntax
+(`msm <server> start`), rather than silently changing it to verb-first syntax.
+Design that compatibility adapter around Cobra in P14; server commands are not
+implemented by this foundation.
+
+## Native configuration foundation
+
+The only implemented setting is `debug` (default `false`). Viper applies
+changed flags > environment > configuration file > defaults, including an
+explicit `--debug=false` overriding a true environment/file value.
+
+```yaml
+debug: true
+```
+
+```sh
+msm version --config ./config.yaml
+MSM_DEBUG=true msm version
+MSM_DEBUG=true msm version --debug=false
+msm completion bash
+```
+
+Without `--config`, discovery uses `os.UserConfigDir()/msm/config` with Viper's
+supported file extensions; YAML (`config.yaml`) is the recommended format.
+On Linux this normally uses `$XDG_CONFIG_HOME/msm` or `$HOME/.config/msm`;
+on macOS it uses `$HOME/Library/Application Support/msm`. The working directory
+and `/etc/msm.conf` are not searched. If no user configuration directory can be
+resolved, only an explicitly provided file is read.
+
+An absent optional file is allowed. An explicitly requested missing file,
+malformed file, unknown key, or invalid typed value is an error. Configuration
+is read-only; no files/directories are created by the loader. The `MSM_`
+environment prefix and underscore key mapping are configured centrally;
+empty environment values retain Viper's default unset behavior.
+
+Cobra handles help and the built-in `--version` flag before pre-run hooks, so
+those informational paths work even with a broken configuration. The `version`
+subcommand and runnable completion commands do run configuration initialization.
+Debug mode currently emits only a configuration-loaded diagnostic on stderr.
+
+The native Viper schema is not a parser for upstream Bash `msm.conf` or Java
+`server.properties`. Legacy discovery, `MSM_CONF`, migration, and per-server
+settings remain P03 work and require an explicit compatibility importer.
 
 ## GitHub Actions
 
