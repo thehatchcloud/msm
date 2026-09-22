@@ -8,6 +8,14 @@ on:
       - 'gh-pages'
 
 jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+      - name: Verify pinned compatibility inventory
+        run: ./scripts/verify-compatibility-baseline.sh
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -16,6 +24,6 @@ jobs:
       - name: Check out branch
         uses: actions/checkout@v4
       - name: Create the minecraft user
-        run: sudo adduser --system minecraft
+        run: sudo adduser --system --group --home /home/minecraft --shell /bin/bash minecraft
       - name: Run tests
         run: sudo /bin/bash ./test.sh

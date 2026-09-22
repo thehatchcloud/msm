@@ -2,6 +2,16 @@
 
 A single init script which makes running multiple Minecraft/Bukkit servers easier for us admins.
 
+## Go Port
+
+This fork is beginning a behavior-compatible Go port of MSM. The original Bash
+implementation remains the pinned reference while the port is developed; it is
+not yet replaced.
+
+* Read the [compatibility contract](docs/compatibility/README.md).
+* Review the [approved safety deviations](docs/compatibility/deviations.md).
+* Track the [Go-port roadmap](https://github.com/thehatchcloud/msm/issues/21).
+
 ## Quick Installers
 
 Install MSM on a **debian box**:
