@@ -84,6 +84,23 @@ been validated on every machine. P04 and P16 own that validation.
 - `internal/clock`: cancelable waits for future countdown operations.
 - `internal/testutil`: recording runner, manually advanced clock, and inert
   fixture copying; used by tests only, not imported into `cmd/msm`.
+- `internal/legacyconf`: literal, eval-free parsing of `msm.conf`/`MSM_CONF`,
+  with a syntax error naming the file/line for anything that still looks
+  like shell, and the P03-owned global settings this task reads from it.
+- `internal/serverprops`: reads and writes `server.properties`, preserving
+  every Minecraft property this package does not touch, and exposes the
+  per-server `msm-<lowercase-dash-name>` overrides other tasks will consume.
+- `internal/atomicfile`: the temp-file-plus-rename primitive every mutation
+  writes through, so a reader never observes a half-written file.
+- `internal/filelock`: cross-process advisory locks for a server directory
+  or the shared JAR store, always acquired in one fixed path order so
+  overlapping lock requests cannot deadlock.
+- `internal/safepath`: the `<name>` grammar validator, root-containment
+  checks that reject traversal and symlink escape, configured-root sanity
+  checks, and case-insensitive collision detection.
+- `internal/identity`: resolves the manager/per-server OS user and drops
+  root privilege to it; never shells out to `sudo` and never relies on a
+  setuid helper.
 - `compatibility`: Go tests verifying P01 source inventories and safe fixtures.
 
 Do not add a package for every future feature in advance. Add screen and
@@ -155,9 +172,81 @@ those informational paths work even with a broken configuration. The `version`
 subcommand and runnable completion commands do run configuration initialization.
 Debug mode currently emits only a configuration-loaded diagnostic on stderr.
 
-The native Viper schema is not a parser for upstream Bash `msm.conf` or Java
-`server.properties`. Legacy discovery, `MSM_CONF`, migration, and per-server
-settings remain P03 work and require an explicit compatibility importer.
+The native Viper schema is still not a parser for upstream Bash `msm.conf` or
+Java `server.properties`; Viper's own schema is unchanged by P03.
+`internal/legacyconf` and `internal/serverprops` are a separate, explicit
+compatibility importer, described next.
+
+## Legacy configuration import and filesystem safety
+
+P03 adds the primitives future server-management tasks (P05 onward) build
+on to read an existing installation and mutate it safely. Nothing in this
+foundation calls them yet: there is still no `server` command tree, and
+these packages are exercised only by their own tests and by
+`compatibility`.
+
+- `legacyconf.Load` parses `msm.conf`/`MSM_CONF` as literal data, the same
+  shape the Bash implementation strips before `eval`: optional matching
+  single/double quotes around a value, last assignment wins. It never
+  evaluates anything; a value that still contains command substitution,
+  variable expansion, chaining, or redirection syntax after unquoting fails
+  with the file, line, and migration advice, instead of being silently
+  passed through. `legacyconf.Discover` resolves an explicit override, then
+  `MSM_CONF`, then a caller-supplied system default, without assuming the
+  winning candidate exists or is readable. `legacyconf.Global` extracts the
+  settings this task owns (manager `USERNAME`, `SERVER_STORAGE_PATH`,
+  `JAR_STORAGE_PATH`, and the Minecraft properties filename) and reports a
+  warning, rather than silently choosing one, when both the registered
+  `SERVER_PROPERTIES` key and the sample file's unread
+  `DEFAULT_PROPERTIES_PATH` key are set to different values (see
+  `docs/compatibility/README.md`). Every other legacy key remains available
+  on the parsed `*legacyconf.File` for its owning task to read later.
+- `config.ResolveDataRoots` decides `ServerStoragePath`/`JarStoragePath`
+  without forcing an existing installation to move: an imported legacy
+  configuration always wins outright. With no legacy configuration to
+  import, root keeps the classic `/opt/msm` layout, and an unprivileged
+  invocation instead defaults to a rootless per-user data directory
+  (`$XDG_DATA_HOME/msm`, or the platform's conventional data directory).
+- `serverprops.Document` reads and writes `server.properties` as flat
+  `key=value` lines, matched literally rather than through Java's
+  Properties escaping rules, mirroring the legacy manager's own sed-based
+  reader. `Get` is case-insensitive with quote-stripping and last-match-
+  wins; `Set` writes an unquoted `key=value` line in place or appends one.
+  Every comment and every key a caller does not touch survives a write
+  unchanged. `Overrides` extracts the per-server `msm-<lowercase-dash-name>`
+  settings described in `docs/compatibility/README.md`.
+- `atomicfile.Write` and `serverprops.Document.Save` replace a file through
+  a temporary file in the same directory, fsync, and rename, so a reader
+  never observes a partial write; an existing file's permissions are
+  preserved rather than overwritten by a caller-supplied default.
+- `filelock.Acquire`/`AcquireMany` are cross-process advisory locks (backed
+  by `flock` via `golang.org/x/sys/unix`) for a server directory
+  (`filelock.ServerLockPath`) or the shared JAR store
+  (`filelock.RegistryLockPath`). `AcquireMany` always takes its locks in one
+  fixed order (the sorted, resolved absolute paths), regardless of the
+  order its caller lists them in, so two callers locking overlapping
+  resources can never deadlock against each other.
+- `safepath.ValidateName` implements the compatibility contract's `<name>`
+  grammar (letters, digits, `_`, `-`; no reserved command tokens; no
+  leading `--`). `safepath.Contain` resolves a relative path against a root
+  and rejects absolute input, `..` traversal, and an existing intermediate
+  symlink that would escape the root, returning the symlink-resolved real
+  path. `safepath.ValidateConfiguredRoot` sanity-checks an administrator-
+  supplied absolute storage path. `safepath.CaseInsensitiveCollision`
+  reports an existing sibling whose name differs from a candidate only in
+  case, since a server, world, or JAR group name must stay unique on a
+  case-insensitive volume even though Linux's ext4/xfs are not.
+- `identity.Lookup`/`identity.Current` resolve an OS user to a UID/GID.
+  `identity.DropTo` is a no-op when the process is already running as the
+  target user, fails with `identity.ErrPrivilegeRequired` rather than
+  silently continuing as the wrong user when it is unprivileged and asked
+  for a different one, and — only when already running as root — clears
+  supplementary groups and sets the group then the user ID, irrevocably,
+  through the standard library's `syscall` package rather than
+  `golang.org/x/sys/unix`, because only the former is documented to apply a
+  Linux credential change to every OS thread at once instead of just the
+  calling one. Nothing in this package shells out to `sudo`/`su`, and
+  nothing installs a setuid helper.
 
 ## GitHub Actions
 
