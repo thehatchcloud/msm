@@ -23,13 +23,14 @@ Go implementation must intentionally change.
 | `compatibility/surfaces.tsv` | Filesystem conventions, state flags, version profiles, maintenance jobs, service integration, completion, prompts, and exit behavior |
 | `compatibility/fixtures/minimal/` | Inert example installation copied into a temporary directory by the verifier |
 
-Run `./scripts/verify-compatibility-baseline.sh` after changing a legacy source
-surface. The script reads files as text; it never sources or invokes `init/msm`.
-It fails when command or setting registrations drift without an accompanying
-contract update.
+Run `go test ./compatibility` after changing a legacy source surface. The tests
+read files as text; they never source or invoke `init/msm`, `msm.conf`, or
+`baseline.env`. They fail when command or setting registrations drift without an
+accompanying contract update and validate fixture ownership/test identifiers.
 
-P02 will move these checks into the Go test harness. This small shell verifier is
-repository tooling, not manager runtime.
+P02 replaces the original shell verifier with Go tests and uses a fresh
+`t.TempDir()` for each inert reference fixture. The inherited shunit suite stays
+separate and runs only on disposable Linux CI runners.
 
 ## Compatibility rules
 
@@ -149,9 +150,10 @@ instead uses an internal `SERVER_PROPERTIES` setting. It remains in
 `settings.tsv` as a `legacy-config` input so migration cannot silently ignore
 an administrator's configured filename.
 
-The Go contract tests named in the TSV files are planned identifiers. They
-become executable in their owning implementation tasks. P01's executable check
-only verifies that the source inventory and inert fixtures have not drifted.
+The Go behavioral contract tests named in the TSV files are planned identifiers.
+They become executable in their owning implementation tasks. The foundation's
+`compatibility/baseline_test.go` verifies source inventories and inert fixtures;
+it does not claim that the command behavior itself has been ported.
 
 ## Source/documentation disagreements
 

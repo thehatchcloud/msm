@@ -1,0 +1,134 @@
+name: Go CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: go-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOTOOLCHAIN: local
+  GOVULNCHECK_VERSION: v1.8.0
+
+jobs:
+  quality:
+    name: Go quality (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Check formatting
+        run: |
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            printf '%s\n' "$files"
+            exit 1
+          fi
+      - name: Check module consistency
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+          test -z "$(git ls-files --others --exclude-standard -- go.sum)"
+      - name: Vet
+        run: go vet ./...
+      - name: Test pure-Go build
+        run: CGO_ENABLED=0 go test -count=1 ./...
+      - name: Race tests
+        run: CGO_ENABLED=1 go test -race -count=1 -timeout=3m ./...
+      - name: Native binary smoke test
+        run: |
+          CGO_ENABLED=0 go build -trimpath -ldflags="-X github.com/thehatchcloud/msm/internal/buildinfo.commit=$GITHUB_SHA" -o "$RUNNER_TEMP/msm" ./cmd/msm
+          "$RUNNER_TEMP/msm" help
+          "$RUNNER_TEMP/msm" version | grep -F "$GITHUB_SHA"
+          if "$RUNNER_TEMP/msm" example start; then
+            echo "Unimplemented command unexpectedly succeeded"
+            exit 1
+          fi
+
+  vulnerability:
+    name: Go vulnerabilities
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install pinned scanner
+        run: go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
+      - name: Scan application and standard library
+        run: govulncheck ./...
+
+  build:
+    name: Go build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux, darwin]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build single executable
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags="-s -w -X github.com/thehatchcloud/msm/internal/buildinfo.version=go-port-dev -X github.com/thehatchcloud/msm/internal/buildinfo.commit=$GITHUB_SHA" -o dist/msm ./cmd/msm
+          cp LICENSE.markdown dist/
+          go version -m dist/msm
+          (cd dist && sha256sum msm > SHA256SUMS)
+      - name: Upload development artifact (not a release)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: msm-${{ matrix.goos }}-${{ matrix.goarch }}-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  gate:
+    name: Go checks
+    runs-on: ubuntu-24.04
+    needs: [quality, vulnerability, build]
+    if: always()
+    timeout-minutes: 2
+    steps:
+      - name: Require every job to succeed
+        env:
+          QUALITY: ${{ needs.quality.result }}
+          VULNERABILITY: ${{ needs.vulnerability.result }}
+          BUILD: ${{ needs.build.result }}
+        run: |
+          test "$QUALITY" = success
+          test "$VULNERABILITY" = success
+          test "$BUILD" = success
