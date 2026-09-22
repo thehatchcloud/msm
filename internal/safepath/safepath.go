@@ -70,13 +70,12 @@ func Contain(root, rel string) (string, error) {
 		return "", fmt.Errorf("safepath: %q escapes its root", rel)
 	}
 
-	canonicalRoot, err := filepath.Abs(root)
+	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		return "", fmt.Errorf("safepath: resolve root %s: %w", root, err)
 	}
-	if resolved, err := filepath.EvalSymlinks(canonicalRoot); err == nil {
-		canonicalRoot = resolved
-	} else if !errors.Is(err, fs.ErrNotExist) {
+	canonicalRoot, err := canonicalize(absRoot)
+	if err != nil {
 		return "", fmt.Errorf("safepath: resolve root %s: %w", root, err)
 	}
 
@@ -119,7 +118,10 @@ func resolveSymlinkChain(path, canonicalRoot string, hops *int) (string, error) 
 		if !filepath.IsAbs(target) {
 			target = filepath.Join(filepath.Dir(current), target)
 		}
-		target = filepath.Clean(target)
+		target, err = canonicalize(filepath.Clean(target))
+		if err != nil {
+			return "", fmt.Errorf("safepath: resolve symlink target of %s: %w", current, err)
+		}
 		if !isWithin(canonicalRoot, target) {
 			return "", fmt.Errorf("safepath: %s escapes %s through a symlink", current, canonicalRoot)
 		}
@@ -129,6 +131,31 @@ func resolveSymlinkChain(path, canonicalRoot string, hops *int) (string, error) 
 
 func isWithin(root, target string) bool {
 	return target == root || strings.HasPrefix(target, root+string(filepath.Separator))
+}
+
+// canonicalize resolves every symlink in path's existing ancestry, the way
+// filepath.EvalSymlinks would if all of path existed. Unlike EvalSymlinks,
+// it does not require path itself (or any not-yet-created suffix of it) to
+// exist: it resolves as much of the path as exists and joins the rest
+// unresolved, since a component that does not exist cannot itself be a
+// symlink. This matters on platforms (macOS's /tmp -> /private/tmp is the
+// common case) where even a path a caller treats as already canonical, such
+// as a fresh t.TempDir(), still has a symlink earlier in its ancestry.
+func canonicalize(path string) (string, error) {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved, nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return "", err
+	}
+	parent := filepath.Dir(path)
+	if parent == path {
+		return path, nil
+	}
+	canonicalParent, err := canonicalize(parent)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(canonicalParent, filepath.Base(path)), nil
 }
 
 // ValidateConfiguredRoot checks an administrator-supplied absolute storage

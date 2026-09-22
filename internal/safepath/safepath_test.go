@@ -101,6 +101,46 @@ func TestContainAllowsSymlinkStayingInsideRoot(t *testing.T) {
 	}
 }
 
+// TestContainAllowsSymlinkStayingInsideRootViaAnUnresolvedRoot reproduces a
+// real bug found on macOS CI: t.TempDir() there lives under /var, itself a
+// symlink to /private/var, so the caller's "root" argument is already
+// unresolved before Contain ever sees it. A symlink written using that same
+// unresolved root (exactly how a caller would naturally construct one, as
+// the test above does with filepath.Join(root, "real-world")) must not be
+// flagged as escaping once root's own ancestry is canonicalized.
+func TestContainAllowsSymlinkStayingInsideRootViaAnUnresolvedRoot(t *testing.T) {
+	outer := t.TempDir()
+	real := filepath.Join(outer, "real-root")
+	if err := os.Mkdir(real, 0700); err != nil {
+		t.Fatal(err)
+	}
+	unresolvedRoot := filepath.Join(outer, "alias-root")
+	if err := os.Symlink(real, unresolvedRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(unresolvedRoot, "real-world"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Built from unresolvedRoot, exactly as a caller who was handed that
+	// root (not knowing or caring that it is itself a symlink) would.
+	if err := os.Symlink(filepath.Join(unresolvedRoot, "real-world"), filepath.Join(unresolvedRoot, "world")); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Contain(unresolvedRoot, "world")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantTarget, err := filepath.EvalSymlinks(filepath.Join(real, "real-world"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != wantTarget {
+		t.Fatalf("Contain(world) = %q, want %q", got, wantTarget)
+	}
+}
+
 func TestContainDetectsSymlinkCycle(t *testing.T) {
 	root := t.TempDir()
 	a := filepath.Join(root, "a")
