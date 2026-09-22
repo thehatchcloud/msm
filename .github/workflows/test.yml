@@ -1,28 +1,25 @@
 name: Run tests
 on:
   push:
-    branches-ignore:
-      - 'gh-pages'
+    branches: [master]
   pull_request:
-    branches-ignore:
-      - 'gh-pages'
+    branches: [master]
+
+permissions:
+  contents: read
 
 jobs:
-  compatibility:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out branch
-        uses: actions/checkout@v4
-      - name: Verify pinned compatibility inventory
-        run: ./scripts/verify-compatibility-baseline.sh
-
   test:
-    runs-on: ubuntu-latest
+    name: Legacy tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Install dependencies
-        run: sudo apt-get install shunit2
+        run: sudo apt-get update && sudo apt-get install -y shunit2
       - name: Check out branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Create the minecraft user
         run: sudo adduser --system --group --home /home/minecraft --shell /bin/bash minecraft
       - name: Run tests

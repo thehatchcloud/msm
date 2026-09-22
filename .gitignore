@@ -1,2 +1,5 @@
 .DS_Store
 _*/*
+/dist/
+/bin/
+/coverage.out

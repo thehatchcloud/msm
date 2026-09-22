@@ -12,6 +12,14 @@ not yet replaced.
 * Review the [approved safety deviations](docs/compatibility/deviations.md).
 * Track the [Go-port roadmap](https://github.com/thehatchcloud/msm/issues/21).
 
+The Go foundation implements `help` and `version` only. Build it with the pinned
+Go toolchain using `CGO_ENABLED=0 go build -o bin/msm ./cmd/msm`; it does not call
+the Bash manager or modify installed servers. See [development and CI](docs/development.md)
+for tests, four-platform builds, artifacts, and review policy.
+
+The quick installers below belong to the original Bash implementation, not the
+Go port. Do not use them to install the Go development artifacts.
+
 ## Quick Installers
 
 Install MSM on a **debian box**:
