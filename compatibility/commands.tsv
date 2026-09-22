@@ -1,0 +1,70 @@
+id	signature	handler	owner	contract_test
+CMD-001	start	command_start	P06	CT-CMD-001
+CMD-002	stop	command_stop	P06	CT-CMD-002
+CMD-003	stop now	command_stop_now	P06	CT-CMD-003
+CMD-004	restart	command_restart	P06	CT-CMD-004
+CMD-005	restart now	command_restart_now	P06	CT-CMD-005
+CMD-006	version	command_version	P14	CT-CMD-006
+CMD-007	config	command_config	P14	CT-CMD-007
+CMD-008	update <flags>	command_update	P15	CT-CMD-008
+CMD-009	server list	command_server_list	P05	CT-CMD-009
+CMD-010	server create <name>	command_server_create	P05	CT-CMD-010
+CMD-011	server delete <name>	command_server_delete	P05	CT-CMD-011
+CMD-012	server rename <name> <name>	command_server_rename	P05	CT-CMD-012
+CMD-013	jargroup list	command_jargroup_list	P07	CT-CMD-013
+CMD-014	jargroup create <name> <string>	command_jargroup_create	P07	CT-CMD-014
+CMD-015	jargroup delete <name>	command_jargroup_delete	P07	CT-CMD-015
+CMD-016	jargroup rename <name> <name>	command_jargroup_rename	P07	CT-CMD-016
+CMD-017	jargroup changeurl <name> <string>	command_jargroup_changeurl	P07	CT-CMD-017
+CMD-018	jargroup getlatest <name>	command_jargroup_getlatest	P07	CT-CMD-018
+CMD-019	help	command_help	P14	CT-CMD-019
+CMD-020	<name:server> start	command_server_start	P06	CT-CMD-020
+CMD-021	<name:server> stop	command_server_stop	P06	CT-CMD-021
+CMD-022	<name:server> stop now	command_server_stop_now	P06	CT-CMD-022
+CMD-023	<name:server> restart	command_server_restart	P06	CT-CMD-023
+CMD-024	<name:server> restart now	command_server_restart_now	P06	CT-CMD-024
+CMD-025	<name:server> status	command_server_status	P06	CT-CMD-025
+CMD-026	<name:server> connected	command_server_connected	P08	CT-CMD-026
+CMD-027	<name:server> worlds list	command_server_worlds_list	P09	CT-CMD-027
+CMD-028	<name:server> worlds load	command_server_worlds_load	P09	CT-CMD-028
+CMD-029	<name:server> worlds ram <name:world>	command_server_worlds_ram	P12	CT-CMD-029
+CMD-030	<name:server> worlds todisk	command_server_worlds_todisk	P12	CT-CMD-030
+CMD-031	<name:server> worlds backup	command_server_worlds_backup	P10	CT-CMD-031
+CMD-032	<name:server> worlds on <name:world>	command_server_worlds_on	P09	CT-CMD-032
+CMD-033	<name:server> worlds off <name:world>	command_server_worlds_off	P09	CT-CMD-033
+CMD-034	<name:server> logroll	command_server_logroll	P13	CT-CMD-034
+CMD-035	<name:server> backup	command_server_backup	P10	CT-CMD-035
+CMD-036	<name:server> jar <name>	command_server_jar	P07	CT-CMD-036
+CMD-037	<name:server> jar <name> <string>	command_server_jar	P07	CT-CMD-037
+CMD-038	<name:server> console	command_server_console	P04	CT-CMD-038
+CMD-039	<name:server> config	command_server_config	P14	CT-CMD-039
+CMD-040	<name:server> config <string>	command_server_config	P14	CT-CMD-040
+CMD-041	<name:server> config <string> <string>	command_server_config	P14	CT-CMD-041
+CMD-042	<name:server> whitelist|wl on	command_server_whitelist_on	P08	CT-CMD-042
+CMD-043	<name:server> whitelist|wl off	command_server_whitelist_off	P08	CT-CMD-043
+CMD-044	<name:server> whitelist|wl add <strings>	command_server_whitelist_add	P08	CT-CMD-044
+CMD-045	<name:server> whitelist|wl remove <strings>	command_server_whitelist_remove	P08	CT-CMD-045
+CMD-046	<name:server> whitelist|wl list	command_server_whitelist_list	P08	CT-CMD-046
+CMD-047	<name:server> blacklist|bl player add <strings>	command_server_blacklist_player_add	P08	CT-CMD-047
+CMD-048	<name:server> blacklist|bl player remove <strings>	command_server_blacklist_player_remove	P08	CT-CMD-048
+CMD-049	<name:server> blacklist|bl ip add <strings>	command_server_blacklist_ip_add	P08	CT-CMD-049
+CMD-050	<name:server> blacklist|bl ip remove <strings>	command_server_blacklist_ip_remove	P08	CT-CMD-050
+CMD-051	<name:server> blacklist|bl list	command_server_blacklist_list	P08	CT-CMD-051
+CMD-052	<name:server> operator|op add <strings>	command_server_operator_add	P08	CT-CMD-052
+CMD-053	<name:server> operator|op remove <strings>	command_server_operator_remove	P08	CT-CMD-053
+CMD-054	<name:server> operator|op list	command_server_operator_list	P08	CT-CMD-054
+CMD-055	<name:server> gamemode|gm <string> <strings>	command_server_gamemode	P08	CT-CMD-055
+CMD-056	<name:server> kick <strings>	command_server_kick	P08	CT-CMD-056
+CMD-057	<name:server> say <strings>	command_server_say	P08	CT-CMD-057
+CMD-058	<name:server> time set <string>	command_server_time_set	P08	CT-CMD-058
+CMD-059	<name:server> time add <string>	command_server_time_add	P08	CT-CMD-059
+CMD-060	<name:server> toggledownfall|tdf	command_server_toggledownfall	P08	CT-CMD-060
+CMD-061	<name:server> give <string> <string>	command_server_give	P08	CT-CMD-061
+CMD-062	<name:server> give <string> <string> <string>	command_server_give	P08	CT-CMD-062
+CMD-063	<name:server> give <string> <string> <string> <string>	command_server_give	P08	CT-CMD-063
+CMD-064	<name:server> xp <string> <string>	command_server_xp	P08	CT-CMD-064
+CMD-065	<name:server> save on	command_server_save_on	P08	CT-CMD-065
+CMD-066	<name:server> save off	command_server_save_off	P08	CT-CMD-066
+CMD-067	<name:server> save all	command_server_save_all	P08	CT-CMD-067
+CMD-068	<name:server> cmd <strings>	command_server_cmd	P08	CT-CMD-068
+CMD-069	<name:server> cmdlog <strings>	command_server_cmdlog	P08	CT-CMD-069

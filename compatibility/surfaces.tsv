@@ -1,0 +1,49 @@
+id	type	source	behavior	owner	contract_test
+SURF-001	environment	init/msm	MSM_CONF overrides /etc/msm.conf	P03	CT-SURF-001
+SURF-002	environment	init/msm	MSM_BASH_COMPLETION overrides /etc/bash_completion.d/msm	P14	CT-SURF-002
+SURF-003	filesystem	init/msm	SERVER_STORAGE_PATH contains one directory per server	P03	CT-SURF-003
+SURF-004	filesystem	init/msm	server.properties contains Minecraft properties and msm-* overrides	P03	CT-SURF-004
+SURF-005	state	init/msm	per-server active marker records desired active state independently of liveness	P06	CT-SURF-005
+SURF-006	filesystem	init/msm	worldstorage contains active worlds owned by the server	P09	CT-SURF-006
+SURF-007	filesystem	init/msm	worldstorage_inactive contains inactive worlds excluded from world-only backup	P09	CT-SURF-007
+SURF-008	filesystem	init/msm	active worlds are symlinked into the server root	P09	CT-SURF-008
+SURF-009	state	init/msm	inram marker inside a world records RAM intent	P12	CT-SURF-009
+SURF-010	filesystem	init/msm	RAM copies use RAMDISK_STORAGE_PATH/server/world	P12	CT-SURF-010
+SURF-011	filesystem	init/msm	JAR_STORAGE_PATH/group contains timestamped JARs	P07	CT-SURF-011
+SURF-012	filesystem	init/msm	target.txt stores each JAR group's download target	P07	CT-SURF-012
+SURF-013	filesystem	init/msm	downloads is temporary JAR download staging	P07	CT-SURF-013
+SURF-014	filesystem	init/msm	server JAR selection is a symlink to a shared JAR-group file	P07	CT-SURF-014
+SURF-015	backup	init/msm	ZIP world archives use WORLD_ARCHIVE_PATH/server/world/timestamp.zip	P10	CT-SURF-015
+SURF-016	backup	init/msm	complete archives use BACKUP_ARCHIVE_PATH/server/timestamp.zip	P10	CT-SURF-016
+SURF-017	backup	init/msm	complete backup optionally follows symlinks	P10	CT-SURF-017
+SURF-018	backup	init/msm	rdiff-backup repositories use WORLD_RDIFF_PATH/server/world with day retention and nice priority	P11	CT-SURF-018
+SURF-019	backup	init/msm	rsync snapshots use WORLD_RSYNC_PATH/server/world/timestamp plus latest hard link target	P11	CT-SURF-019
+SURF-020	logging	init/msm	logroll copies and gzips the configured log then truncates/replaces it	P13	CT-SURF-020
+SURF-021	version-profile	versioning/minecraft/1.2.0.sh	base profile defines legacy commands confirmations and server.log	P08	CT-SURF-021
+SURF-022	version-profile	versioning/minecraft/1.3.0.sh	inherits minecraft/1.2.0 and changes command syntax/output	P08	CT-SURF-022
+SURF-023	version-profile	versioning/minecraft/1.7.0.sh	inherits minecraft/1.3.0 and changes latest log path/regex	P08	CT-SURF-023
+SURF-024	version-profile	versioning/craftbukkit/1.2.0.sh	inherits minecraft/1.2.0	P08	CT-SURF-024
+SURF-025	version-profile	versioning/craftbukkit/1.3.0.sh	inherits minecraft/1.3.0 and changes save confirmations	P08	CT-SURF-025
+SURF-026	completion	bash_completion/msm	Bash completion exposes commands dynamic servers worlds and JAR groups	P14	CT-SURF-026
+SURF-027	service	init/msm.service	system-wide oneshot start stop restart integration	P15	CT-SURF-027
+SURF-028	service	init/msm@.service	per-server systemd oneshot start stop restart integration	P15	CT-SURF-028
+SURF-029	installer	installers/	Debian RedHat and Arch installers create user directories config cron service and dependencies	P15	CT-SURF-029
+SURF-030	maintenance	cron/msm	daily all-world backup at 05:02	P13	CT-SURF-030
+SURF-031	maintenance	cron/msm	daily all-server logroll at 04:55	P13	CT-SURF-031
+SURF-032	maintenance	cron/msm	all RAM worlds synchronize to disk every 30 minutes	P13	CT-SURF-032
+SURF-033	maintenance	cron/msm	hourly global start recovers stopped active servers	P13	CT-SURF-033
+SURF-034	maintenance	cron/msm	daily pruning removes server logs older than 30 days	P13	CT-SURF-034
+SURF-035	maintenance	cron/msm	daily pruning removes full backups older than 30 days	P13	CT-SURF-035
+SURF-036	maintenance	cron/msm	daily pruning removes archived logs older than 30 days	P13	CT-SURF-036
+SURF-037	maintenance	cron/msm	daily pruning removes world ZIPs older than 30 days	P13	CT-SURF-037
+SURF-038	prompt	init/msm	server deletion requires y/Y/yes and defaults to no	P05	CT-SURF-038
+SURF-039	prompt	init/msm	JAR-group deletion requires y/Y/yes and defaults to no	P07	CT-SURF-039
+SURF-040	prompt	init/msm	update requires y/Y/yes unless --noinput is present	P15	CT-SURF-040
+SURF-041	exit	test.sh	exit codes 64-73 name invalid user/command/argument/server/file/duplicate/log/config failures	P14	CT-SURF-041
+SURF-042	test-surface	test.sh	30 shunit functions run against /tmp/msmtest after config redirection	P02	CT-SURF-042
+SURF-043	targeting	init/msm	all server and all world expansion is performed sequentially by the dispatcher	P14	CT-SURF-043
+SURF-044	quoting	init/msm	one quoted shell argument can satisfy string/strings placeholders	P14	CT-SURF-044
+SURF-045	security	init/msm	global config and invocation are evaluated as shell expressions	DEVIATION	DEV-001
+SURF-046	security	init/msm	downloads disable TLS certificate verification	DEVIATION	DEV-002
+SURF-047	update	init/msm	self-update replaces script completion and executable version profiles then recurses	DEVIATION	DEV-006
+SURF-048	config-drift	msm.conf	DEFAULT_PROPERTIES_PATH is documented but ignored because the source uses SERVER_PROPERTIES	P03	CT-SURF-048

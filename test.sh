@@ -119,6 +119,21 @@ quiet() {
 	EXIT_CODE=$?
 }
 
+# Seeds an inert local JAR and disables remote downloads for tests which need a
+# populated JAR group. The historical S3 fixture URL is no longer reliable and
+# made the test suite depend on external network state.
+# $1: JAR group name
+seed_jargroup_jar() {
+	manager_property JAR_STORAGE_PATH
+	manager_property JARGROUP_TARGET
+
+	local group_path="${SETTINGS_JAR_STORAGE_PATH}/$1"
+	: > "${group_path}/${SETTINGS_JARGROUP_TARGET}"
+	local jar_path="${group_path}/2026-01-01-00-00-00-fixture-server.jar"
+	printf 'MSM test fixture; not a Java archive.\n' > "$jar_path"
+	chown "$USERNAME" "${group_path}/${SETTINGS_JARGROUP_TARGET}" "$jar_path"
+}
+
 
 # Global Command Tests
 # -----------------------
@@ -192,6 +207,7 @@ test_creating_server_with_jar_groups() {
 	# Create the "minecraft" jar group, which is used by default when creating
 	# new servers.
 	quiet $TEST_SCRIPT jargroup create minecraft "https://s3.amazonaws.com/MinecraftDownload/launcher/minecraft_server.jar"
+	seed_jargroup_jar minecraft
 	# Create a new server that will use the "minecraft" jar group.
 	expect_stderr_empty $TEST_SCRIPT server create example
 
@@ -352,6 +368,7 @@ test_stopped_server_jar() {
 
 	# Create new jargroup
 	quiet $TEST_SCRIPT jargroup create newgroup "https://s3.amazonaws.com/MinecraftDownload/launcher/minecraft_server.jar"
+	seed_jargroup_jar newgroup
 
 	# Assign jargroup's latest jar to server
 	expect_stdout $TEST_SCRIPT stoppedserver jar newgroup
