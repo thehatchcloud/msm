@@ -35,6 +35,26 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      # The screen backend tests drive a real GNU screen. Install it
+      # explicitly rather than trusting whatever the image preinstalls, and
+      # make a missing screen fail those tests instead of skipping them.
+      - name: Install GNU screen (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends screen
+          echo "MSM_TEST_SCREEN=$(command -v screen)" >> "$GITHUB_ENV"
+      - name: Install GNU screen (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          brew install screen
+          echo "MSM_TEST_SCREEN=$(brew --prefix)/bin/screen" >> "$GITHUB_ENV"
+      - name: Record screen version
+        run: |
+          echo "MSM_REQUIRE_SCREEN=1" >> "$GITHUB_ENV"
+          "$MSM_TEST_SCREEN" -v || true
       - name: Check formatting
         run: |
           files="$(gofmt -l .)"
@@ -53,6 +73,15 @@ jobs:
         run: CGO_ENABLED=0 go test -count=1 ./...
       - name: Race tests
         run: CGO_ENABLED=1 go test -race -count=1 -timeout=3m ./...
+      - name: Screen backend against the OS-bundled screen
+        if: runner.os == 'macOS'
+        run: |
+          if [ -x /usr/bin/screen ]; then
+            /usr/bin/screen -v || true
+            MSM_TEST_SCREEN=/usr/bin/screen go test -count=1 -v -run 'Native' ./internal/screen
+          else
+            echo "No /usr/bin/screen on this image"
+          fi
       - name: Native binary smoke test
         run: |
           CGO_ENABLED=0 go build -trimpath -ldflags="-X github.com/thehatchcloud/msm/internal/buildinfo.commit=$GITHUB_SHA" -o "$RUNNER_TEMP/msm" ./cmd/msm

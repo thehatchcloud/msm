@@ -4,7 +4,8 @@ This is a foundation, not a production manager. The Go executable supports only
 `help`, `--help`, `-h`, `version`, `--version`, and Cobra-generated `completion`;
 all management commands return a nonzero error. Viper reads the small native
 configuration schema described below. No Go command runs the legacy manager,
-reads legacy server configuration, or launches Minecraft.
+reads legacy server configuration, or launches Minecraft; the screen backend
+(P04) is a library that later lifecycle and console tasks will call.
 
 ## Toolchain and dependencies
 
@@ -38,8 +39,10 @@ govulncheck ./...
 The race detector requires CGO and a host C toolchain. That does not change the
 shipping build: all distributable binaries are built with `CGO_ENABLED=0`.
 
-The Go tests need neither screen nor Java, use temporary directories, and never
-execute the upstream manager. The separate legacy shunit suite must run on a
+The Go tests need no Java, use temporary directories, and never execute the
+upstream manager. The screen backend's native tests also run GNU screen when it
+is installed (in private socket and home directories) and skip otherwise;
+`MSM_REQUIRE_SCREEN=1` turns a missing screen into a failure, as CI does. The separate legacy shunit suite must run on a
 disposable Linux CI machine: it creates a dedicated test user and uses
 `/tmp/msmtest`. Do not run it on a production Minecraft host.
 
@@ -79,8 +82,9 @@ been validated on every machine. P04 and P16 own that validation.
   stdout/stderr, and the executable error/exit boundary.
 - `internal/config`: per-invocation Viper setup and typed native settings.
 - `internal/buildinfo`: injected version and commit metadata.
-- `internal/process`: a small direct-exec boundary for future short-lived
-  adapters, with explicit arguments, working directory and environment.
+- `internal/process`: a small direct-exec boundary with explicit arguments,
+  working directory, environment and optional child credentials, plus an
+  attached-terminal variant for consoles.
 - `internal/clock`: cancelable waits for future countdown operations.
 - `internal/testutil`: recording runner, manually advanced clock, and inert
   fixture copying; used by tests only, not imported into `cmd/msm`.
@@ -101,10 +105,13 @@ been validated on every machine. P04 and P16 own that validation.
 - `internal/identity`: resolves the manager/per-server OS user and drops
   root privilege to it; never shells out to `sudo` and never relies on a
   setuid helper.
+- `internal/screen`: the GNU screen session backend (discovery, detached
+  launch, console input, terminal attach) and the process-table reader that
+  proves which process a session is running.
 - `compatibility`: Go tests verifying P01 source inventories and safe fixtures.
 
-Do not add a package for every future feature in advance. Add screen and
-manager packages when their implementing tasks need them.
+Do not add a package for every future feature in advance. Add manager
+packages when their implementing tasks need them.
 
 ## Cobra and Viper conventions
 
@@ -248,6 +255,96 @@ these packages are exercised only by their own tests and by
   calling one. Nothing in this package shells out to `sudo`/`su`, and
   nothing installs a setuid helper.
 
+## GNU screen backend
+
+P04 adds `internal/screen`, which keeps GNU screen as the console host
+instead of introducing a daemon or custom supervisor. Nothing in the CLI calls
+it yet; P06 (lifecycle) and P08 (console and game commands) will.
+
+External tools: `screen` is the only program this package runs. It reads the
+process table directly (`/proc` on Linux, `sysctl` `kern.proc`/`kern.procargs2`
+on macOS) instead of running `ps`, and never uses `sh -c`, `bash -c`, `su`,
+`sudo` or `script`.
+
+- **Invocation.** Every call is `screen` with an explicit argument vector,
+  working directory and a complete caller-supplied environment (not merged
+  with the manager's own). Set `SCREENDIR` in that environment to keep
+  sessions somewhere other than screen's default. The owner's `~/.screenrc`
+  and the system screenrc still apply, as they did for the legacy manager;
+  one that sets `zombie` keeps a finished session open, which `WaitStopped`
+  then reports as a timeout.
+- **Ownership.** Sessions belong to one OS user. A caller that is that user
+  runs screen directly; a root caller runs screen with the owner's UID/GID
+  and cleared supplementary groups, for the child only; any other caller is
+  refused with `identity.ErrPrivilegeRequired`. `Attach` additionally
+  requires the caller to be the owner, since screen will not use a terminal
+  another user owns (DEV-015).
+- **Discovery.** `screen -ls` is parsed, its exit status ignored (releases
+  disagree). Sessions are matched by exact name and addressed by exact
+  `<pid>.<name>`, never by screen's name-prefix matching. An unusable socket
+  directory is `ErrInaccessible`; two live sessions with the name are
+  `ErrDuplicate`, which blocks launch and sending until an administrator
+  removes one. Dead or unreachable sockets are listed as `Stale`, ignored for
+  liveness, and never wiped.
+- **Three separate states.** `Status` reports whether a session exists and,
+  separately, `Liveness`: `Running` only when the screen process belongs to
+  the owner and exactly one of its window processes is owned by the owner
+  and runs the configured invocation (arguments exactly, `argv[0]` by base
+  name; extra console windows are noted in `Detail`); `Starting` when no
+  window process is visible yet; `Foreign` when anything else holds the
+  name, which is reported and never adopted, sent to or terminated. `Launch`
+  keeps polling through a transient `Foreign` observation, because screen's
+  forked window process looks like screen until it execs the invocation. Minecraft readiness is a third question, answered by a
+  caller-supplied `Probe` inside `WaitReady`, which fails early with
+  `ErrExited` if the process dies first (DEV-010).
+- **Deadlines.** `Launch`, `WaitStopped` and `WaitReady` all take a timeout
+  and poll through `clock.Clock`; each returns a specific error
+  (`ErrStartTimeout`, `ErrStopTimeout`, `ErrReadyTimeout`, `ErrExited`) naming
+  the session and what was last observed. Nothing here kills a process.
+- **Console input.** `Send` accepts one line of 1–1000 bytes of printable
+  UTF-8; control characters, including CR/LF, are refused. Measured on screen
+  4.09, `-X stuff` arguments go through screen's command parser: `\` escapes,
+  `^X` makes a control character, and `$NAME`/`${NAME}` expand screen's
+  environment, so those three characters are backslash-escaped. Screen 4.09
+  also silently drops a `stuff` argument over 756 bytes while exiting 0, so
+  lines are sent in chunks of at most 128 bytes, never splitting an escape
+  or a UTF-8 sequence, with Enter in the last chunk. A multi-chunk line is
+  not atomic against a second concurrent sender; callers serialize on the
+  server lock. See DEV-013 and DEV-014.
+- **Attach.** `Attach` requires real terminals for stdin and stdout and runs
+  `screen -r <pid>.<name>` connected to them. Ctrl-A d detaches and leaves
+  the server running.
+
+### Tested screen versions
+
+| Platform | screen | Source | Evidence |
+|---|---|---|---|
+| Linux amd64 (Ubuntu 24.04) | 4.09.01 | distribution package `screen` 4.9.1-1ubuntu1 | local run and `Go quality (ubuntu-24.04)` |
+| macOS arm64 (macos-15 runner) | Homebrew `screen`, version recorded in the CI log | `brew install screen` | `Go quality (macos-15)` |
+| macOS, OS-bundled `/usr/bin/screen` | recorded in the CI log when present | Apple | informational CI step |
+
+`Backend.Version` rejects anything older than 4.0. Other releases are
+expected to work but are not claimed until they appear in this table.
+
+The native tests in `internal/screen/native_test.go` launch a stand-in
+server (the test binary itself, so no Java), exit that launching process,
+reconnect and send from fresh processes, round-trip every printable ASCII
+character and a maximum-length escapable line, attach through a
+pseudo-terminal and detach with Ctrl-A d, and stop within a deadline. They
+also cover a stale socket whose orphaned child must not be adopted,
+duplicate and foreign sessions, an inaccessible socket directory, and a
+launch that fails. They use a private `SCREENDIR` and `HOME`, and skip when
+screen is missing unless `MSM_REQUIRE_SCREEN=1`, which CI sets after
+installing screen explicitly. `MSM_TEST_SCREEN` selects a specific binary:
+
+```sh
+MSM_REQUIRE_SCREEN=1 go test -count=1 -v -run Native ./internal/screen
+```
+
+The root-to-owner credential drop is covered by unit tests and was checked by
+hand as root against an unprivileged user; hosted CI runners are not root, so
+CI does not repeat it.
+
 ## GitHub Actions
 
 The `Go CI` workflow runs on pull requests targeting `master`, pushes to
@@ -256,8 +353,8 @@ checkout does not retain credentials.
 
 | Job | Evidence |
 |---|---|
-| Go quality (ubuntu-24.04) | Formatting, tidy drift, vet, pure-Go unit tests, race tests, native executable smoke |
-| Go quality (macos-15) | The same checks on a native macOS runner |
+| Go quality (ubuntu-24.04) | Formatting, tidy drift, vet, pure-Go unit tests, race tests, native screen backend tests, native executable smoke |
+| Go quality (macos-15) | The same checks on a native macOS runner, plus the screen tests against `/usr/bin/screen` when the image has one |
 | Go vulnerabilities | Pinned govulncheck scan of application and standard library |
 | Go build (OS/architecture) | Four CGO-disabled binaries with source metadata |
 | Go checks | Stable aggregate gate; fails if any prerequisite fails, is canceled or is skipped |
