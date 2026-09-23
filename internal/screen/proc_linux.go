@@ -20,11 +20,19 @@ func (SystemProcesses) Get(pid int) (ProcInfo, error) {
 	if err != nil {
 		return ProcInfo{}, err
 	}
+	// The process can exit between these reads; that is an exit, not an
+	// error.
 	uid, err := realUID(dir + "/status")
+	if gone(err) {
+		return ProcInfo{}, fmt.Errorf("%w: %d exited", ErrNoProcess, pid)
+	}
 	if err != nil {
 		return ProcInfo{}, fmt.Errorf("screen: read process %d owner: %w", pid, err)
 	}
 	cmdline, err := os.ReadFile(dir + "/cmdline")
+	if gone(err) {
+		return ProcInfo{}, fmt.Errorf("%w: %d exited", ErrNoProcess, pid)
+	}
 	if err != nil {
 		return ProcInfo{}, fmt.Errorf("screen: read process %d arguments: %w", pid, err)
 	}
@@ -39,7 +47,7 @@ func (SystemProcesses) Get(pid int) (ProcInfo, error) {
 // scan for children does not depend on access to unrelated processes.
 func parentPID(pid int) (int, error) {
 	stat, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
-	if errors.Is(err, fs.ErrNotExist) {
+	if gone(err) {
 		return 0, fmt.Errorf("%w: %d", ErrNoProcess, pid)
 	}
 	if err != nil {
@@ -59,6 +67,10 @@ func parentPID(pid int) (int, error) {
 		return 0, fmt.Errorf("screen: malformed stat for process %d", pid)
 	}
 	return ppid, nil
+}
+
+func gone(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, unix.ESRCH)
 }
 
 func realUID(path string) (int, error) {

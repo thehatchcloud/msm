@@ -9,15 +9,24 @@ import (
 
 const ioctlGetTermios = unix.TIOCGETA
 
-// sZomb is XNU's SZOMB process state (sys/proc.h).
-const sZomb = 5
+// XNU's SZOMB process state and P_WEXIT ("working on exiting") flag, from
+// sys/proc.h.
+const (
+	sZomb  = 5
+	pWExit = 0x2000
+)
+
+// exited reports whether kinfo_proc no longer describes a live pid.
+func exited(kp *unix.KinfoProc, pid int) bool {
+	return int(kp.Proc.P_pid) != pid || kp.Proc.P_stat == sZomb || kp.Proc.P_flag&pWExit != 0
+}
 
 func (SystemProcesses) Get(pid int) (ProcInfo, error) {
 	kp, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
 	if err != nil {
 		return ProcInfo{}, fmt.Errorf("screen: read process %d: %w", pid, err)
 	}
-	if int(kp.Proc.P_pid) != pid || kp.Proc.P_stat == sZomb {
+	if exited(kp, pid) {
 		return ProcInfo{}, fmt.Errorf("%w: %d", ErrNoProcess, pid)
 	}
 	argv, err := procArgs(pid)
@@ -34,7 +43,7 @@ func (p SystemProcesses) Children(ppid int) ([]ProcInfo, error) {
 	}
 	var children []ProcInfo
 	for _, kp := range all {
-		if int(kp.Eproc.Ppid) != ppid || kp.Proc.P_stat == sZomb {
+		if int(kp.Eproc.Ppid) != ppid || exited(&kp, int(kp.Proc.P_pid)) {
 			continue
 		}
 		info, err := p.Get(int(kp.Proc.P_pid))
@@ -54,6 +63,14 @@ func procArgs(pid int) ([]string, error) {
 	if err != nil {
 		if errors.Is(err, unix.EINVAL) || errors.Is(err, unix.ESRCH) {
 			return nil, fmt.Errorf("%w: %d exited", ErrNoProcess, pid)
+		}
+		// A process tearing down its address space answers EIO. Only call
+		// it gone if the process table agrees; a live process keeps the
+		// error, so an unreadable process is never mistaken for an exit.
+		if errors.Is(err, unix.EIO) {
+			if kp, kerr := unix.SysctlKinfoProc("kern.proc.pid", pid); kerr != nil || exited(kp, pid) {
+				return nil, fmt.Errorf("%w: %d exited", ErrNoProcess, pid)
+			}
 		}
 		return nil, fmt.Errorf("screen: read process %d arguments: %w", pid, err)
 	}
