@@ -110,6 +110,19 @@ func TestParseVersion(t *testing.T) {
 	}
 }
 
+func TestVersionRejectsBundledMacOSScreen(t *testing.T) {
+	for out, supported := range map[string]bool{
+		"Screen version 4.00.03 (FAU) 23-Oct-06\n":            false,
+		"Screen version 4.09.01 (GNU) 20-Aug-23\n":            true,
+		"Screen version 5.0.2 (build on 2026-07-11 12:23:56)": true,
+	} {
+		_, err := testBackend(t, lsOnly(out), fakeProcs{}).Version(context.Background())
+		if supported != (err == nil) || (!supported && !errors.Is(err, ErrUnsupportedVersion)) {
+			t.Errorf("%q: %v", out, err)
+		}
+	}
+}
+
 func TestParseProcArgs(t *testing.T) {
 	raw := binary.NativeEndian.AppendUint32(nil, 3)
 	raw = append(raw, "/usr/bin/java\x00\x00\x00\x00java\x00-jar\x00a b.jar\x00PATH=/bin\x00"...)

@@ -2,6 +2,7 @@ package screen
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -12,11 +13,15 @@ type Version struct{ Major, Minor, Patch int }
 
 func (v Version) String() string { return fmt.Sprintf("%d.%02d.%02d", v.Major, v.Minor, v.Patch) }
 
-// MinimumVersion is the oldest screen this adapter accepts. Every
-// capability it uses (-ls, -dmS with an argument vector, -S <pid.name>
-// -p 0 -X stuff, -r, SCREENDIR) predates 4.0, but only the versions listed
-// in docs/development.md are tested.
-var MinimumVersion = Version{4, 0, 0}
+// MinimumVersion is the oldest screen this adapter accepts. The 4.00.03
+// that macOS bundles as /usr/bin/screen fails the native tests (its window
+// process is never observed as a child of the session's screen process),
+// so 4.00.x is refused with advice to install a current screen. Only the
+// versions listed in docs/development.md are tested.
+var MinimumVersion = Version{4, 1, 0}
+
+// ErrUnsupportedVersion reports a screen older than MinimumVersion.
+var ErrUnsupportedVersion = errors.New("screen: unsupported screen version")
 
 var versionPattern = regexp.MustCompile(`Screen version (\d+)\.(\d+)(?:\.(\d+))?`)
 
@@ -58,7 +63,8 @@ func (b *Backend) Version(ctx context.Context) (Version, error) {
 		return Version{}, parseErr
 	}
 	if v.less(MinimumVersion) {
-		return v, fmt.Errorf("screen: version %s is older than the supported minimum %s", v, MinimumVersion)
+		return v, fmt.Errorf("%w: %s at %s is older than %s; install a current GNU screen (for example `brew install screen` on macOS) and configure its path",
+			ErrUnsupportedVersion, v, b.cfg.Screen, MinimumVersion)
 	}
 	return v, nil
 }

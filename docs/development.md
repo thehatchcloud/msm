@@ -320,11 +320,14 @@ on macOS) instead of running `ps`, and never uses `sh -c`, `bash -c`, `su`,
 | Platform | screen | Source | Evidence |
 |---|---|---|---|
 | Linux amd64 (Ubuntu 24.04) | 4.09.01 | distribution package `screen` 4.9.1-1ubuntu1 | local run and `Go quality (ubuntu-24.04)` |
-| macOS arm64 (macos-15 runner) | Homebrew `screen`, version recorded in the CI log | `brew install screen` | `Go quality (macos-15)` |
-| macOS, OS-bundled `/usr/bin/screen` | recorded in the CI log when present | Apple | informational CI step |
+| macOS arm64 (macos-15 runner) | 5.0.2 | Homebrew `brew install screen` | `Go quality (macos-15)` |
+| macOS arm64, OS-bundled `/usr/bin/screen` | 4.00.03 (FAU) | Apple | **Unsupported.** The native tests fail: the session's window process is never observed as a child of its screen process. `Backend.Version` refuses it, and CI asserts that refusal |
 
-`Backend.Version` rejects anything older than 4.0. Other releases are
-expected to work but are not claimed until they appear in this table.
+`Backend.Version` returns `ErrUnsupportedVersion` for anything older than
+4.01, with advice to install a current screen; callers check it once before
+using the backend. Releases between 4.01 and 4.09.01 are not yet tested and
+are not claimed until they appear in this table. On macOS, install screen
+from Homebrew and configure its absolute path.
 
 The native tests in `internal/screen/native_test.go` launch a stand-in
 server (the test binary itself, so no Java), exit that launching process,
@@ -354,7 +357,7 @@ checkout does not retain credentials.
 | Job | Evidence |
 |---|---|
 | Go quality (ubuntu-24.04) | Formatting, tidy drift, vet, pure-Go unit tests, race tests, native screen backend tests, native executable smoke |
-| Go quality (macos-15) | The same checks on a native macOS runner, plus the screen tests against `/usr/bin/screen` when the image has one |
+| Go quality (macos-15) | The same checks on a native macOS runner (Homebrew screen), plus a check that the bundled `/usr/bin/screen` 4.00.03 is refused |
 | Go vulnerabilities | Pinned govulncheck scan of application and standard library |
 | Go build (OS/architecture) | Four CGO-disabled binaries with source metadata |
 | Go checks | Stable aggregate gate; fails if any prerequisite fails, is canceled or is skipped |

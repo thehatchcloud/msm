@@ -145,6 +145,10 @@ func newNativeEnv(t *testing.T) *nativeEnv {
 	}
 	e := &nativeEnv{bin: bin, dir: dir, home: t.TempDir(), work: t.TempDir()}
 	e.b = nativeBackend(t, bin, dir, e.home)
+	if _, err := e.b.Version(context.Background()); err != nil {
+		os.RemoveAll(dir)
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		// Quit whatever a failed test left behind, then remove the sockets.
 		sessions, _ := e.b.Sessions(context.Background())
@@ -191,6 +195,19 @@ func waitForLine(t *testing.T, out, line string) {
 		data, _ := os.ReadFile(out)
 		return slices.Contains(strings.Split(string(data), "\n"), line)
 	})
+}
+
+// TestNativeVersionGate checks that the backend accepts or refuses the
+// screen under test according to MinimumVersion. CI runs it against macOS's
+// bundled /usr/bin/screen, which must be refused rather than half-work.
+func TestNativeVersionGate(t *testing.T) {
+	bin := findScreen(t)
+	b := nativeBackend(t, bin, t.TempDir(), t.TempDir())
+	v, err := b.Version(context.Background())
+	t.Logf("%s reports screen %s: %v", bin, v, err)
+	if want := os.Getenv("MSM_EXPECT_UNSUPPORTED") == "1"; want != errors.Is(err, ErrUnsupportedVersion) {
+		t.Fatalf("MSM_EXPECT_UNSUPPORTED=%v but Version returned %v", want, err)
+	}
 }
 
 func TestNativeLifecycle(t *testing.T) {
