@@ -62,3 +62,35 @@ func TestCanceledRunner(t *testing.T) {
 		t.Fatalf("expected cancellation, got %v", err)
 	}
 }
+
+func TestRunAttachedUsesGivenFiles(t *testing.T) {
+	out, err := os.CreateTemp(t.TempDir(), "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	err = (ExecRunner{}).RunAttached(context.Background(), Command{
+		Path: os.Args[0], Args: []string{"-test.run=^TestChildProcess$", "--", "attached"},
+		Env: append(os.Environ(), "MSM_TEST_CHILD=1"),
+	}, Stdio{In: nil, Out: out, Err: out})
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 7 {
+		t.Fatalf("expected child exit 7, got %v", err)
+	}
+	data, _ := os.ReadFile(out.Name())
+	if !strings.Contains(string(data), "[attached]") || !strings.Contains(string(data), "fixture stderr") {
+		t.Fatalf("output = %q", data)
+	}
+}
+
+func TestCredentialRunsChildAsAnotherUser(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("changing a child's credentials requires root")
+	}
+	result, err := (ExecRunner{}).Run(context.Background(), Command{
+		Path: "/usr/bin/id", Args: []string{"-u"}, Credential: &Credential{UID: 65534, GID: 65534},
+	})
+	if err != nil || strings.TrimSpace(result.Stdout) != "65534" {
+		t.Fatalf("id -u = %q, %v", result.Stdout, err)
+	}
+}
