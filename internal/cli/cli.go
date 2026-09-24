@@ -16,9 +16,14 @@ const (
 
 // Run is the process boundary: Cobra returns errors; only main exits.
 // A fresh command tree keeps flags and Viper state isolated per invocation.
-func Run(args []string, stdout, stderr io.Writer, info buildinfo.Info) int {
-	root, err := NewRootCommand(info)
+func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, info buildinfo.Info) int {
+	return run(args, stdin, stdout, stderr, info, defaultDeps())
+}
+
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer, info buildinfo.Info, d deps) int {
+	root, err := newRootCommand(info, d)
 	if err == nil {
+		root.SetIn(stdin)
 		root.SetOut(stdout)
 		root.SetErr(stderr)
 		// A non-nil empty slice prevents Cobra from falling back to os.Args.

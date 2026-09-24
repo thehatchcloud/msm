@@ -1,11 +1,14 @@
 # Go development and build workflow
 
-This is a foundation, not a production manager. The Go executable supports only
-`help`, `--help`, `-h`, `version`, `--version`, and Cobra-generated `completion`;
-all management commands return a nonzero error. Viper reads the small native
-configuration schema described below. No Go command runs the legacy manager,
-reads legacy server configuration, or launches Minecraft; the screen backend
-(P04) is a library that later lifecycle and console tasks will call.
+This is an alpha, not a production manager. The Go executable supports
+`help`, `--help`, `-h`, `version`, `--version`, Cobra-generated `completion`,
+and the P05 instance commands `server list`, `server create`, `server rename`
+and `server delete` (see [Server instances](#server-instances-p05)). Every
+other management command returns a nonzero error. Viper reads the small native
+configuration schema described below. No Go command runs the legacy manager or
+launches Minecraft; the screen backend (P04) is a library that later lifecycle
+and console tasks will call, and that `server` commands use only to check
+whether a server is running.
 
 ## Toolchain and dependencies
 
@@ -108,6 +111,9 @@ been validated on every machine. P04 and P16 own that validation.
 - `internal/screen`: the GNU screen session backend (discovery, detached
   launch, console input, terminal attach) and the process-table reader that
   proves which process a session is running.
+- `internal/servers`: server instance management (list, create, rename,
+  delete) over one storage root, and the screen-backed check of whether a
+  server is running.
 - `compatibility`: Go tests verifying P01 source inventories and safe fixtures.
 
 Do not add a package for every future feature in advance. Add manager
@@ -186,11 +192,9 @@ compatibility importer, described next.
 
 ## Legacy configuration import and filesystem safety
 
-P03 adds the primitives future server-management tasks (P05 onward) build
-on to read an existing installation and mutate it safely. Nothing in this
-foundation calls them yet: there is still no `server` command tree, and
-these packages are exercised only by their own tests and by
-`compatibility`.
+P03 adds the primitives server-management tasks (P05 onward) build on to
+read an existing installation and mutate it safely. `internal/servers` (P05)
+is their first caller.
 
 - `legacyconf.Load` parses `msm.conf`/`MSM_CONF` as literal data, the same
   shape the Bash implementation strips before `eval`: optional matching
@@ -372,6 +376,100 @@ MSM_REQUIRE_SCREEN=1 go test -count=1 -v -run Native ./internal/screen
 The root-to-owner credential drop is covered by unit tests and was checked by
 hand as root against an unprivileged user; hosted CI runners are not root, so
 CI does not repeat it.
+
+## Server instances (P05)
+
+`internal/servers` and the `msm server` commands manage the directories below
+`SERVER_STORAGE_PATH`, with the upstream layout and defaults
+(`compatibility/commands.tsv` CMD-009 to CMD-012, SURF-038).
+
+### Configuration and ownership
+
+The CLI imports the legacy `msm.conf` from `MSM_CONF`, else `/etc/msm.conf`
+(`legacyconf.Discover`). It supplies `SERVER_STORAGE_PATH`,
+`SERVER_PROPERTIES`, the manager user `USERNAME`, and the `DEFAULT_*` values a
+new server starts from. Without one, root uses the classic `/opt/msm/servers`
+owned by `minecraft`, and an unprivileged user gets a rootless data directory
+(`config.ResolveDataRoots`) that is created on the first `server create`.
+Servers whose owner is not configured belong to that user. A configured
+`SERVER_STORAGE_PATH` must already exist; the manager never creates it.
+
+Files are created only as the manager user. An unprivileged caller must be
+that user (else `identity.ErrPrivilegeRequired`). A root caller takes the
+locks and checks the server's state as root, then permanently drops to the
+manager user (`identity.DropTo`) before its first filesystem change, so a
+privileged process never modifies paths inside a tree an unprivileged user
+can write to. Lock files a root caller creates are made with `O_EXCL` (never
+through a symbolic link) and handed to their owner through the open
+descriptor.
+
+### Behavior
+
+- **Names.** `safepath.ValidateName` applies to every new and existing name.
+  A name that already exists, even as a file or symbolic link, or that differs
+  from an existing entry only in letter case, is refused. A case-only rename
+  (`Foo` to `foo`) is refused; rename through another name.
+- **List.** Servers are sorted by name and keep the legacy wording, for
+  example `[ ACTIVE ] "survival" is running. Everything is OK.` Active intent
+  is the `FLAG_ACTIVE_PATH` marker. Liveness comes from GNU screen: a live
+  session running the configured invocation is running; any other live
+  session with the server's `SCREEN_NAME` is reported as not verifiably this
+  server; a session the manager cannot inspect (for example another user's,
+  without root) is reported as unknown. If `screen` is not on `PATH`, no
+  server can be running in it. Leftover staged operations, symbolic links and
+  directories with invalid names are listed as warnings on stderr, never as
+  servers. The expected invocation is `INVOCATION` split on white space until
+  P06 adds its launch-argument parser; a mismatch can only make a server look
+  occupied, never stopped.
+- **Create.** Writes `[]` into the whitelist, banned-IPs, banned-players and
+  ops JSON files, `ops.txt` from `DEFAULT_OPS_LIST` (comma separated, spaces
+  removed), an empty properties file, and the world storage directory with
+  its `readme.txt`, exactly as `server_create` does. It never writes
+  `eula.txt` or the `active` marker. A `DEFAULT_*_PATH` that resolves outside
+  the new directory is not created and produces a warning. The instance is
+  assembled in `.msm-create-<name>-<random>` in the storage root and
+  published with one `rename(2)`. It does not select a server JAR
+  (DEV-017).
+- **Rename.** Refuses unless the server is proven stopped (running, occupied
+  and unknown all refuse). The directory moves with one `rename(2)`; then
+  each top-level symbolic link whose absolute target lies inside the old
+  directory (the world links `server_ensure_links` makes) is atomically
+  retargeted into the new one. Links elsewhere, such as `server.jar` into the
+  JAR store, are untouched. If retargeting fails, the changed links are
+  restored and the directory moved back, and the error says nothing was
+  renamed; if even that fails, the error names where the server now is.
+  Archives made under the old name keep it, as before, and the command says
+  so.
+- **Delete.** Shows the resolved directory, file count and size, top-level
+  entries and every symbolic link that points outside the server, then asks
+  the legacy question. Only `y`, `Y` or `yes` deletes; anything else prints
+  `Server was NOT deleted.` and exits 0. When stdin is not a terminal it
+  never reads it: it fails unless `--yes` (`-y`) is given. A server that is
+  not proven stopped is refused, instead of being stopped as the legacy
+  command did (DEV-018). Under the locks, the directory must still be the
+  one previewed; it is renamed to `.msm-delete-<name>-<random>` (leaving
+  service in one step) and then removed without following symbolic links,
+  so link targets outside the server always survive. If removal stops part
+  way, the command fails with the leftover path, which `server list` keeps
+  reporting.
+- **Locking.** Create, rename and delete hold the storage-root lock
+  (`.msm-servers.lock`); rename and delete also hold the server's
+  `.msm.lock`, acquired together through `filelock.AcquireMany`.
+  `Manager.LockServer`, for P06 onward, takes only a server's lock and fails
+  with `ErrNotFound` if the server was renamed or deleted while it waited
+  (`filelock.Lock.Stat` proves the locked file is still the one at the path).
+
+### Tests
+
+`internal/servers` tests interrupt every filesystem step of create and
+rename, and both steps of delete, through an injected failing `fsOps`, and
+check that the original instance is intact (or the staged directory is
+reported). The contract tests carry their IDs in comments: CT-CMD-009
+(`TestList`), CT-CMD-010 (`TestCreateLayout`), CT-CMD-011 (`TestDelete`),
+CT-CMD-012 (`TestRename`) and CT-SURF-038 (`TestServerDeleteConfirmation`).
+Privilege dropping is tested with a recorded `DropTo`; the real drop was
+checked by hand by running the binary as root with an unprivileged
+`USERNAME`.
 
 ## GitHub Actions
 
