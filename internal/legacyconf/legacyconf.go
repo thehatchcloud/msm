@@ -29,10 +29,24 @@ type File struct {
 	Values map[string]Assignment
 }
 
-// Get returns the last assignment to name, if any.
+// Get returns the last assignment to name, if any, matched exactly.
 func (f *File) Get(name string) (string, bool) {
 	a, ok := f.Values[name]
 	return a.Value, ok
+}
+
+// Lookup reads a setting the way the legacy manager's manager_property
+// does: the name is matched case-insensitively, the last matching line in
+// the file wins, and an empty value counts as unset, so the caller's
+// default applies. Use it, not Get, to resolve a setting's effective value.
+func (f *File) Lookup(name string) (string, bool) {
+	last := Assignment{Line: -1}
+	for k, a := range f.Values {
+		if strings.EqualFold(k, name) && a.Line > last.Line {
+			last = a
+		}
+	}
+	return last.Value, last.Value != ""
 }
 
 const migrationAdvice = "rewrite the assignment as a plain literal value (quoted if it contains spaces); the Go port never evaluates shell syntax in configuration"
@@ -177,7 +191,9 @@ const (
 )
 
 // Global extracts the settings this task owns from a parsed file, applying
-// the same defaults msm.conf documents. It never errors on a key it does
+// the same defaults msm.conf documents. Values are read with Lookup, so an
+// empty assignment such as USERNAME="" keeps the default, as it does in the
+// legacy manager. It never errors on a key it does
 // not recognize: a single legacy file is shared across every task that
 // eventually reads its own settings from it.
 func Global(f *File) GlobalSettings {
@@ -187,13 +203,13 @@ func Global(f *File) GlobalSettings {
 		JarStoragePath:       DefaultJarStoragePath,
 		ServerPropertiesFile: DefaultServerPropertiesFile,
 	}
-	if v, ok := f.Get("USERNAME"); ok {
+	if v, ok := f.Lookup("USERNAME"); ok {
 		settings.Username = v
 	}
-	if v, ok := f.Get("SERVER_STORAGE_PATH"); ok {
+	if v, ok := f.Lookup("SERVER_STORAGE_PATH"); ok {
 		settings.ServerStoragePath = v
 	}
-	if v, ok := f.Get("JAR_STORAGE_PATH"); ok {
+	if v, ok := f.Lookup("JAR_STORAGE_PATH"); ok {
 		settings.JarStoragePath = v
 	}
 
@@ -202,8 +218,8 @@ func Global(f *File) GlobalSettings {
 	// ships, which upstream never reads back; import either spelling into
 	// one canonical field rather than silently dropping an administrator's
 	// configured filename.
-	registered, hasRegistered := f.Get("SERVER_PROPERTIES")
-	legacy, hasLegacy := f.Get("DEFAULT_PROPERTIES_PATH")
+	registered, hasRegistered := f.Lookup("SERVER_PROPERTIES")
+	legacy, hasLegacy := f.Lookup("DEFAULT_PROPERTIES_PATH")
 	switch {
 	case hasRegistered:
 		settings.ServerPropertiesFile = registered

@@ -1,8 +1,10 @@
 package serverprops
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -35,7 +37,9 @@ func TestGetIsCaseInsensitiveAndLastAssignmentWins(t *testing.T) {
 
 func TestSetUpdatesExistingLineInPlace(t *testing.T) {
 	doc := Parse([]byte("# a comment\nlevel-name=world\nmotd=hi\n"))
-	doc.Set("level-name", "creative")
+	if err := doc.Set("level-name", "creative"); err != nil {
+		t.Fatal(err)
+	}
 
 	got := string(doc.Bytes())
 	want := "# a comment\nlevel-name=creative\nmotd=hi\n"
@@ -46,7 +50,9 @@ func TestSetUpdatesExistingLineInPlace(t *testing.T) {
 
 func TestSetAppendsNewKey(t *testing.T) {
 	doc := Parse([]byte("level-name=world\n"))
-	doc.Set("msm-ram", "2048")
+	if err := doc.Set("msm-ram", "2048"); err != nil {
+		t.Fatal(err)
+	}
 
 	got := string(doc.Bytes())
 	want := "level-name=world\nmsm-ram=2048\n"
@@ -57,7 +63,9 @@ func TestSetAppendsNewKey(t *testing.T) {
 
 func TestSetNeverQuotesTheWrittenValue(t *testing.T) {
 	doc := Parse(nil)
-	doc.Set("msm-message-stop", "Fixture stopping in {DELAY} seconds")
+	if err := doc.Set("msm-message-stop", "Fixture stopping in {DELAY} seconds"); err != nil {
+		t.Fatal(err)
+	}
 	got := string(doc.Bytes())
 	want := "msm-message-stop=Fixture stopping in {DELAY} seconds\n"
 	if got != want {
@@ -73,7 +81,9 @@ func TestSetNeverQuotesTheWrittenValue(t *testing.T) {
 func TestUnknownPropertiesAndCommentsSurviveARoundTrip(t *testing.T) {
 	original := "# header comment\n! bang comment\n\nlevel-name=world\ngenerator-settings={\"layers\":[]}\nmsm-ram=1024\n"
 	doc := Parse([]byte(original))
-	doc.Set("msm-ram", "2048")
+	if err := doc.Set("msm-ram", "2048"); err != nil {
+		t.Fatal(err)
+	}
 
 	got := string(doc.Bytes())
 	want := "# header comment\n! bang comment\n\nlevel-name=world\ngenerator-settings={\"layers\":[]}\nmsm-ram=2048\n"
@@ -109,7 +119,9 @@ msm-message-stop="Fixture stopping in {DELAY} seconds"
 
 func TestSetOverrideRoundTrips(t *testing.T) {
 	doc := Parse([]byte("level-name=world\n"))
-	doc.SetOverride("Stop-Delay", "5")
+	if err := doc.SetOverride("Stop-Delay", "5"); err != nil {
+		t.Fatal(err)
+	}
 	got, ok := doc.Get("msm-stop-delay")
 	if !ok || got != "5" {
 		t.Fatalf("Get(msm-stop-delay) = (%q, %v), want (\"5\", true)", got, ok)
@@ -164,7 +176,9 @@ func TestSaveIsAtomicAndPreservesPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc.Set("level-name", "creative")
+	if err := doc.Set("level-name", "creative"); err != nil {
+		t.Fatal(err)
+	}
 	if err := doc.Save(path, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -184,5 +198,67 @@ func TestSaveIsAtomicAndPreservesPermissions(t *testing.T) {
 	got, _ := reloaded.Get("level-name")
 	if got != "creative" {
 		t.Fatalf("Get(level-name) after Save = %q, want creative", got)
+	}
+}
+
+func TestSetRefusesLineInjection(t *testing.T) {
+	doc := Parse([]byte("level-name=world\n"))
+	for _, tc := range []struct{ key, value string }{
+		{"motd", "hi\nop-permission-level=4"},
+		{"motd", "carriage\rreturn"},
+		{"motd", "nul\x00byte"},
+		{"motd\nextra", "x"},
+		{"", "x"},
+		{" motd", "x"},
+		{"#motd", "x"},
+		{"!motd", "x"},
+		{"a=b", "x"},
+	} {
+		if err := doc.Set(tc.key, tc.value); !errors.Is(err, ErrUnsafeProperty) {
+			t.Errorf("Set(%q, %q) = %v, want ErrUnsafeProperty", tc.key, tc.value, err)
+		}
+	}
+	if err := doc.SetOverride("message-stop", "two\nlines"); !errors.Is(err, ErrUnsafeProperty) {
+		t.Errorf("SetOverride with a newline = %v", err)
+	}
+	if got := string(doc.Bytes()); got != "level-name=world\n" {
+		t.Fatalf("refused writes changed the document: %q", got)
+	}
+}
+
+// server.properties is read and written literally, as the legacy
+// manager's sed reader and writer do, not with Java Properties escaping
+// (see docs/compatibility/README.md). Backslashes, unicode escapes and
+// trailing continuations are data, and only an exact "key=" at the start
+// of a line is an assignment.
+func TestPropertiesAreLiteralNotJavaEscaped(t *testing.T) {
+	doc := Parse([]byte(`motd=A \u00A7 sign\\and\:colon
+level-name=C:\worlds\main
+continued=first\
+second-line=kept
+  indented=ignored
+spaced = ignored
+colon:ignored
+`))
+	for key, want := range map[string]string{
+		"motd":        `A \u00A7 sign\\and\:colon`,
+		"level-name":  `C:\worlds\main`,
+		"continued":   `first\`,
+		"second-line": "kept",
+	} {
+		if got, ok := doc.Get(key); !ok || got != want {
+			t.Errorf("Get(%q) = (%q, %v), want %q", key, got, ok, want)
+		}
+	}
+	for _, key := range []string{"indented", "spaced", "colon"} {
+		if got, ok := doc.Get(key); ok {
+			t.Errorf("Get(%q) = %q; a Java-only assignment form must not match", key, got)
+		}
+	}
+	if err := doc.Set("motd", `C:\new\u0041`); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(doc.Bytes()), "motd=C:\\new\\u0041\n") {
+		t.Fatalf("value was not written literally: %q", doc.Bytes())
 	}
 }

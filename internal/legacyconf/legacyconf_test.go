@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -70,8 +71,13 @@ func TestLoadRejectsShellSyntax(t *testing.T) {
 			if !errors.As(err, &syntaxErr) {
 				t.Fatalf("error %v does not wrap *SyntaxError", err)
 			}
-			if syntaxErr.Line != 1 {
-				t.Fatalf("SyntaxError.Line = %d, want 1", syntaxErr.Line)
+			if syntaxErr.Line != 1 || syntaxErr.Path != path {
+				t.Fatalf("SyntaxError at %s:%d, want %s:1", syntaxErr.Path, syntaxErr.Line, path)
+			}
+			// The message an administrator sees names the file and line and
+			// says how to migrate.
+			if msg := err.Error(); !strings.Contains(msg, path+":1:") || !strings.Contains(msg, migrationAdvice) {
+				t.Fatalf("error %q lacks the file:line location or migration advice", msg)
 			}
 		})
 	}
@@ -194,4 +200,29 @@ func TestGlobalPropertiesFilenameSpelling(t *testing.T) {
 			t.Fatalf("got %+v, want the registered spelling and one conflict warning", s)
 		}
 	})
+}
+
+// Global reads msm.conf the way init/msm's manager_property does: keys in
+// any case, the last matching line wins, and an empty value keeps the
+// default.
+func TestGlobalFollowsLegacyLookupRules(t *testing.T) {
+	f, err := Load(write(t, `USERNAME="admin"
+USERNAME=""
+server_storage_path=/srv/servers
+JAR_STORAGE_PATH="/srv/jars"
+Jar_Storage_Path='/srv/jars-later'
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := Global(f)
+	if s.Username != DefaultUsername || s.ServerStoragePath != "/srv/servers" || s.JarStoragePath != "/srv/jars-later" {
+		t.Fatalf("Global = %+v", s)
+	}
+	if v, ok := f.Lookup("username"); ok || v != "" {
+		t.Fatalf("Lookup of an emptied setting = (%q, %v), want unset", v, ok)
+	}
+	if v, ok := f.Get("server_storage_path"); !ok || v != "/srv/servers" {
+		t.Fatalf("Get must still match exactly: (%q, %v)", v, ok)
+	}
 }

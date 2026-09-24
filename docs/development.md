@@ -208,6 +208,28 @@ these packages are exercised only by their own tests and by
   `DEFAULT_PROPERTIES_PATH` key are set to different values (see
   `docs/compatibility/README.md`). Every other legacy key remains available
   on the parsed `*legacyconf.File` for its owning task to read later.
+  `File.Lookup` reads a setting as the legacy `manager_property` does: key
+  matched case-insensitively, last matching line wins, and an empty value
+  means unset so the default applies. `Global` uses it; `File.Get` stays an
+  exact match.
+- `legacyconf.ResolveServer` computes a server's effective settings, one
+  per setting `init/msm` registers with `register_server_setting` (the
+  table is checked against `compatibility/settings.tsv`). The first
+  non-empty value wins: `msm-<lowercase-dash-name>` in the server's
+  properties file, then the version profile P08 will supply, then
+  `DEFAULT_<NAME>` in `msm.conf`, then the built-in default. The result is
+  post-processed like `server_set_property`: relative `*_PATH` values
+  (including `worldstorage`, `worldstorage_inactive` and the JAR link) are
+  joined to the server directory, and `{SERVER_NAME}`, `{DELAY}`, `{RAM}`
+  and `{JAR}` are expanded. `Source` says which layer each value came from,
+  and an `msm-*` key that names no registered setting produces a warning
+  rather than being silently ignored.
+- Ownership is explicit per server: `ServerSettings.Username` comes from
+  `msm-username` or `DEFAULT_USERNAME`, never from the manager's own
+  `USERNAME` (the legacy manager keeps them separate), and `Owner` resolves
+  it to an `identity.Identity`, failing with `ErrNoOwner` if the user does
+  not exist. Callers then act as that user through `identity.DropTo` or a
+  child-process credential (`process.Command.Credential`).
 - `config.ResolveDataRoots` decides `ServerStoragePath`/`JarStoragePath`
   without forcing an existing installation to move: an imported legacy
   configuration always wins outright. With no legacy configuration to
@@ -218,7 +240,10 @@ these packages are exercised only by their own tests and by
   `key=value` lines, matched literally rather than through Java's
   Properties escaping rules, mirroring the legacy manager's own sed-based
   reader. `Get` is case-insensitive with quote-stripping and last-match-
-  wins; `Set` writes an unquoted `key=value` line in place or appends one.
+  wins; `Set` writes an unquoted `key=value` line in place or appends one,
+  and refuses (`ErrUnsafeProperty`) a key or value that would add or break
+  a line (DEV-016). Values are never Java-unescaped or escaped; see the
+  escaping decision in `docs/compatibility/README.md`.
   Every comment and every key a caller does not touch survives a write
   unchanged. `Overrides` extracts the per-server `msm-<lowercase-dash-name>`
   settings described in `docs/compatibility/README.md`.
