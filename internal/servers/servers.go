@@ -214,12 +214,22 @@ func (m *Manager) existing(name string) (string, error) {
 		return "", fmt.Errorf("%w: %v", ErrInvalidName, err)
 	}
 	dir := filepath.Join(m.cfg.Root, name)
-	info, err := os.Lstat(dir)
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
+	// Match the name exactly against the directory listing: on a
+	// case-insensitive volume (macOS by default) Lstat("OLD") would find
+	// "old" and act on a server the caller did not name.
+	exact, err := hasEntry(m.cfg.Root, name)
+	if err != nil {
+		return "", err
+	}
+	if !exact {
 		if other, found, _ := safepath.CaseInsensitiveCollision(m.cfg.Root, name); found {
 			return "", fmt.Errorf("%w %q (did you mean %q?)", ErrNotFound, name, other)
 		}
+		return "", fmt.Errorf("%w %q", ErrNotFound, name)
+	}
+	info, err := os.Lstat(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
 		return "", fmt.Errorf("%w %q", ErrNotFound, name)
 	case err != nil:
 		return "", fmt.Errorf("servers: inspect %s: %w", dir, err)
@@ -238,10 +248,14 @@ func (m *Manager) available(name string) error {
 		return fmt.Errorf("%w: %v", ErrInvalidName, err)
 	}
 	dir := filepath.Join(m.cfg.Root, name)
-	if _, err := os.Lstat(dir); err == nil {
+	// Check the exact name and case variants against the listing first, so
+	// a case-insensitive volume reports the same error as a sensitive one.
+	exact, err := hasEntry(m.cfg.Root, name)
+	if err != nil {
+		return err
+	}
+	if exact {
 		return fmt.Errorf("%w: %s", ErrExists, dir)
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("servers: inspect %s: %w", dir, err)
 	}
 	other, found, err := safepath.CaseInsensitiveCollision(m.cfg.Root, name)
 	if err != nil {
@@ -250,7 +264,30 @@ func (m *Manager) available(name string) error {
 	if found {
 		return fmt.Errorf("%w: %q already exists, and %q would be the same directory on a case-insensitive volume", ErrCaseCollision, other, name)
 	}
+	if _, err := os.Lstat(dir); err == nil {
+		return fmt.Errorf("%w: %s", ErrExists, dir)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("servers: inspect %s: %w", dir, err)
+	}
 	return nil
+}
+
+// hasEntry reports whether dir lists an entry named exactly name. A
+// missing dir has no entries.
+func hasEntry(dir, name string) (bool, error) {
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("servers: list %s: %w", dir, err)
+	}
+	for _, e := range entries {
+		if e.Name() == name {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // actAs checks that this process may mutate the storage root. Root may
