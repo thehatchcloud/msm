@@ -162,7 +162,7 @@ it does not claim that the command behavior itself has been ported.
 | `all` targeting | Dispatcher permits `all` in every `<name:server>` signature | Cron uses `all`; help emphasizes global lifecycle and individual server syntax | Preserve safe bulk operations and document them consistently in P14 |
 | Global stop intent | Does not remove active marker | Public global docs say intent is unchanged | Preserve |
 | Per-server stop intent | Removes active marker before stopping | Public server docs describe inactive state | Preserve |
-| `server delete` while running | Prompts, then stops and deletes | Help only says delete | Keep explicit prompt/flag; preview target and fail safely |
+| `server delete` while running | Prompts, then stops and deletes | Help only says delete | Keep explicit prompt, add `--yes`; preview target; refuse a server not proven stopped (DEV-018, P05) |
 | `jargroup rename` | Does not update server JAR symlinks; source contains TODO | Help implies rename succeeds | P07 must update/refuse affected references atomically |
 | Unknown command status | Prints a message and normally exits zero | No status documented | Return nonzero usage status |
 | Update transport | Downloads unverified files with TLS checks disabled | Described simply as update | Replace with verified release artifacts |
