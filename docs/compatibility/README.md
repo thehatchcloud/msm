@@ -168,6 +168,7 @@ it does not claim that the command behavior itself has been ported.
 | Update transport | Downloads unverified files with TLS checks disabled | Described simply as update | Replace with verified release artifacts |
 | Current game syntax | Profiles stop at Minecraft 1.7-era parsing | Project description implies general Minecraft support | Retain legacy profiles and add an explicitly tested modern profile |
 | Properties filename | `init/msm` registers `SERVER_PROPERTIES` | `msm.conf` exposes `DEFAULT_PROPERTIES_PATH`, which the source never reads | Import either spelling with a warning; write one canonical Go setting in P03 |
+| `server.properties` escaping | `read_server_conf` matches `^key=` with `sed` and reads values literally; `command_server_config` writes `key=value` literally with `sed -i` | Minecraft parses the same file with Java `Properties` rules (backslash escapes, `\uXXXX`, line continuations, `:` or whitespace separators) | Preserve the literal reading and writing, so every existing value means what it meant to the legacy manager; Java-only forms (indented keys, `key: value`, `key value`) are not assignments, as before. A value written through the manager reaches Minecraft Java-unescaped, exactly as it did before. Tested in `internal/serverprops` (P03) |
 
 ## Ownership map
 

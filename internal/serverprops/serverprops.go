@@ -11,6 +11,7 @@
 package serverprops
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -117,20 +118,35 @@ func (d *Document) lastMatch(key string) (value string, index int, found bool) {
 	return value, index, found
 }
 
+// ErrUnsafeProperty reports a key or value that Set refuses to write
+// because it would add, remove or reshape a line of the file.
+var ErrUnsafeProperty = errors.New("serverprops: unsafe property")
+
 // Set assigns key to value, in place if key already has an exact,
 // case-sensitive matching assignment line, or otherwise by appending a new
-// unquoted "key=value" line. The written value is never quoted, matching
-// the legacy manager's own property writer; only Get needs to tolerate
-// quotes left over from a hand-edited file.
-func (d *Document) Set(key, value string) {
+// unquoted "key=value" line. The written value is never quoted or escaped,
+// matching the legacy manager's own property writer; only Get needs to
+// tolerate quotes left over from a hand-edited file.
+//
+// Set refuses a key that is empty, has surrounding whitespace, starts a
+// comment or contains '=', and any key or value containing a line break or
+// NUL, so a value can never inject a second property line.
+func (d *Document) Set(key, value string) error {
+	switch {
+	case key == "" || strings.TrimSpace(key) != key || key[0] == '#' || key[0] == '!' || strings.Contains(key, "="):
+		return fmt.Errorf("%w: key %q is not a plain property name", ErrUnsafeProperty, key)
+	case strings.ContainsAny(key+value, "\r\n\x00"):
+		return fmt.Errorf("%w: %s value contains a line break or NUL", ErrUnsafeProperty, key)
+	}
 	line := key + "=" + value
 	for i, existing := range d.lines {
 		if k, _, ok := parseLine(existing); ok && k == key {
 			d.lines[i] = line
-			return
+			return nil
 		}
 	}
 	d.lines = append(d.lines, line)
+	return nil
 }
 
 // Overrides returns every msm-<lowercase-dash-name> per-server setting in
@@ -153,6 +169,6 @@ func (d *Document) Overrides() map[string]string {
 // SetOverride assigns the msm-<name> per-server setting to value. name is
 // the lowercase-dash setting name without the "msm-" prefix, for example
 // "stop-delay" or "message-stop".
-func (d *Document) SetOverride(name, value string) {
-	d.Set(overridePrefix+strings.ToLower(name), value)
+func (d *Document) SetOverride(name, value string) error {
+	return d.Set(overridePrefix+strings.ToLower(name), value)
 }
