@@ -39,6 +39,14 @@ go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 govulncheck ./...
 ```
 
+The `Makefile` wraps these commands; run `make` to list its targets. `make
+check` runs the formatting, vet, module, unit and race checks, `make build`
+writes `bin/msm` stamped with the current commit, `make cross` writes one
+binary per platform below to `dist/`, `make vuln` runs the pinned
+`govulncheck`, and `make clean` removes `bin/`, `dist/` and `coverage.out`
+(`make clean-cache` also clears the Go build and test caches). CI runs the
+commands directly and does not use make.
+
 The race detector requires CGO and a host C toolchain. That does not change the
 shipping build: all distributable binaries are built with `CGO_ENABLED=0`.
 
