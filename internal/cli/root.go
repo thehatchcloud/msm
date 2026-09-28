@@ -12,14 +12,19 @@ import (
 // NewRootCommand constructs a new command tree and a private Viper instance.
 // No init hooks or package-level command/configuration singletons are used.
 func NewRootCommand(info buildinfo.Info) (*cobra.Command, error) {
+	return newRootCommand(info, defaultDeps())
+}
+
+func newRootCommand(info buildinfo.Info, d deps) (*cobra.Command, error) {
 	v := config.New()
 	var configFile string
 	root := &cobra.Command{
 		Use:   "msm",
 		Short: "Manage Minecraft servers",
-		Long: `Minecraft Server Manager: Go port foundation.
+		Long: `Minecraft Server Manager: Go port (alpha).
 
-Server management is not implemented yet. This binary never invokes the
+Server listing, creation, renaming and deletion are implemented; starting,
+stopping and console commands are not yet. This binary never invokes the
 legacy Bash manager and is not a replacement for a production installation.`,
 		Version:       info.String(),
 		SilenceErrors: true,
@@ -47,6 +52,6 @@ legacy Bash manager and is not a replacement for a production installation.`,
 	if err := v.BindPFlag("debug", root.PersistentFlags().Lookup("debug")); err != nil {
 		return nil, fmt.Errorf("bind debug flag: %w", err)
 	}
-	root.AddCommand(newVersionCommand(info))
+	root.AddCommand(newVersionCommand(info), newServerCommand(d))
 	return root, nil
 }

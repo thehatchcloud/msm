@@ -28,7 +28,8 @@ func TestRun(t *testing.T) {
 		want string
 	}{
 		{"empty", nil, ExitOK, "Usage:"},
-		{"help", []string{"help"}, ExitOK, "not implemented yet"},
+		{"help", []string{"help"}, ExitOK, "not yet"},
+		{"server help", []string{"server"}, ExitOK, "rename"},
 		{"long help", []string{"--help"}, ExitOK, "Usage:"},
 		{"short help", []string{"-h"}, ExitOK, "Usage:"},
 		{"command help", []string{"help", "version"}, ExitOK, "Show the Go-port version"},
@@ -45,7 +46,7 @@ func TestRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out, errOut bytes.Buffer
-			code := Run(tt.args, &out, &errOut, buildinfo.Info{Version: "go-port-test", Commit: "abc123"})
+			code := Run(tt.args, nil, &out, &errOut, buildinfo.Info{Version: "go-port-test", Commit: "abc123"})
 			if code != tt.code {
 				t.Fatalf("exit=%d, want %d; stderr=%q", code, tt.code, errOut.String())
 			}
@@ -78,7 +79,7 @@ func TestPersistentFlagsAndIsolation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		var out, errOut bytes.Buffer
-		if code := Run(tt.args, &out, &errOut, buildinfo.Current()); code != ExitOK {
+		if code := Run(tt.args, nil, &out, &errOut, buildinfo.Current()); code != ExitOK {
 			t.Fatalf("args=%v exit=%d stderr=%s", tt.args, code, errOut.String())
 		}
 		if strings.Contains(errOut.String(), "debug:") != tt.debug {
@@ -95,7 +96,7 @@ func TestConfigurationErrors(t *testing.T) {
 	}
 	for _, file := range []string{bad, filepath.Join(t.TempDir(), "missing.yaml")} {
 		var out, errOut bytes.Buffer
-		if code := Run([]string{"version", "--config", file}, &out, &errOut, buildinfo.Current()); code != ExitError {
+		if code := Run([]string{"version", "--config", file}, nil, &out, &errOut, buildinfo.Current()); code != ExitError {
 			t.Fatalf("config error returned %d", code)
 		}
 		if out.Len() != 0 || !strings.Contains(errOut.String(), "read configuration") {
@@ -111,7 +112,7 @@ func TestInformationalFlagsSkipConfig(t *testing.T) {
 	for _, arg := range []string{"--help", "--version"} {
 		for _, args := range [][]string{{arg, "--config", file}, {"--config", file, arg}} {
 			var out, errOut bytes.Buffer
-			if code := Run(args, &out, &errOut, buildinfo.Current()); code != ExitOK || errOut.Len() != 0 {
+			if code := Run(args, nil, &out, &errOut, buildinfo.Current()); code != ExitOK || errOut.Len() != 0 {
 				t.Fatalf("args=%v exit=%d stderr=%s", args, code, errOut.String())
 			}
 		}
@@ -123,7 +124,7 @@ func TestCobraCompletion(t *testing.T) {
 	for _, shell := range []string{"bash", "zsh", "fish", "powershell"} {
 		t.Run(shell, func(t *testing.T) {
 			var out, errOut bytes.Buffer
-			if code := Run([]string{"completion", shell}, &out, &errOut, buildinfo.Current()); code != ExitOK {
+			if code := Run([]string{"completion", shell}, nil, &out, &errOut, buildinfo.Current()); code != ExitOK {
 				t.Fatalf("exit=%d stderr=%s", code, errOut.String())
 			}
 			if out.Len() == 0 || !strings.Contains(out.String(), "msm") {
@@ -140,7 +141,7 @@ func (brokenWriter) Write([]byte) (int, error) { return 0, errors.New("closed") 
 func TestRunEWriteFailure(t *testing.T) {
 	isolateConfig(t)
 	var errOut bytes.Buffer
-	if got := Run([]string{"version"}, brokenWriter{}, &errOut, buildinfo.Current()); got != ExitError {
+	if got := Run([]string{"version"}, nil, brokenWriter{}, &errOut, buildinfo.Current()); got != ExitError {
 		t.Fatalf("exit=%d", got)
 	}
 	if !strings.Contains(errOut.String(), "closed") {

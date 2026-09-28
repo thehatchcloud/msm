@@ -1,6 +1,7 @@
 package filelock
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -144,5 +145,36 @@ func TestServerAndRegistryLockPaths(t *testing.T) {
 	}
 	if got, want := RegistryLockPath("/opt/msm/jars"), "/opt/msm/jars/.msm-registry.lock"; got != want {
 		t.Fatalf("RegistryLockPath = %q, want %q", got, want)
+	}
+}
+
+func TestStatDescribesTheLockedFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.lock")
+	l, err := Acquire(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := l.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current, err := os.Stat(path); err != nil || !os.SameFile(held, current) {
+		t.Fatalf("Stat does not match the lock path: %v", err)
+	}
+	if err := os.Rename(path, filepath.Join(dir, "b.lock")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if current, _ := os.Stat(path); os.SameFile(held, current) {
+		t.Fatal("a replaced lock path still matches the held lock")
+	}
+	if err := l.Release(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.Stat(); err == nil {
+		t.Fatal("Stat of a released lock succeeded")
 	}
 }

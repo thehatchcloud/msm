@@ -93,6 +93,21 @@ jobs:
             echo "Unimplemented command unexpectedly succeeded"
             exit 1
           fi
+          smoke="$RUNNER_TEMP/msm-smoke"
+          mkdir -p "$smoke/servers"
+          printf 'USERNAME="%s"\nDEFAULT_USERNAME="%s"\nSERVER_STORAGE_PATH="%s"\n' "$(id -un)" "$(id -un)" "$smoke/servers" > "$smoke/msm.conf"
+          export MSM_CONF="$smoke/msm.conf"
+          "$RUNNER_TEMP/msm" server create smoke
+          test -f "$smoke/servers/smoke/worldstorage/readme.txt"
+          test ! -e "$smoke/servers/smoke/eula.txt"
+          "$RUNNER_TEMP/msm" server list | grep -F '"smoke" is stopped'
+          "$RUNNER_TEMP/msm" server rename smoke smoked
+          if "$RUNNER_TEMP/msm" server delete smoked < /dev/null; then
+            echo "Noninteractive delete without --yes unexpectedly succeeded"
+            exit 1
+          fi
+          "$RUNNER_TEMP/msm" server delete --yes smoked
+          "$RUNNER_TEMP/msm" server list | grep -Fx '[There are no servers]'
 
   vulnerability:
     name: Go vulnerabilities

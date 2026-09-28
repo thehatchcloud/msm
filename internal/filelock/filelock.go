@@ -45,6 +45,16 @@ func Acquire(path string) (*Lock, error) {
 // Path reports the absolute path backing the lock.
 func (l *Lock) Path() string { return l.path }
 
+// Stat describes the locked file itself, not whatever Path names now. A
+// caller compares it with os.Stat(Path()) using os.SameFile to prove the
+// directory it locked was not renamed or replaced while it waited.
+func (l *Lock) Stat() (os.FileInfo, error) {
+	if l == nil || l.file == nil {
+		return nil, errors.New("filelock: stat of an unheld lock")
+	}
+	return l.file.Stat()
+}
+
 // Release drops the lock and closes its underlying file handle. Calling
 // Release more than once on the same Lock returns an error rather than
 // panicking or silently succeeding.
