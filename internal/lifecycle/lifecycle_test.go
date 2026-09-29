@@ -323,3 +323,21 @@ func TestInvalidDelay(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+// Whether screen saw a session before it ended is a matter of timing; the
+// error must not depend on it, so bulk results stay deterministic.
+func TestExitMessageIgnoresTiming(t *testing.T) {
+	var messages []string
+	for _, behavior := range []string{behaveCrash, behaveVanish} {
+		e := newEnv(t)
+		e.server("a", behavior, "")
+		err := e.manager().Start(bg, "a", &strings.Builder{})
+		if !errors.Is(err, ErrExited) {
+			t.Fatalf("%s: %v", behavior, err)
+		}
+		messages = append(messages, strings.ReplaceAll(err.Error(), e.root, "ROOT"))
+	}
+	if messages[0] != messages[1] {
+		t.Fatalf("messages differ:\n%s\n%s", messages[0], messages[1])
+	}
+}

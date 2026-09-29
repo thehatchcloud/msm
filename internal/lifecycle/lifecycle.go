@@ -387,11 +387,11 @@ func (m *Manager) launch(ctx context.Context, s *server) error {
 	case ctx.Err() != nil:
 		return fmt.Errorf("%w while server %q was starting; it may still be starting", ErrInterrupted, s.name)
 	case errors.Is(err, screen.ErrExited):
-		return s.diagnose(log, err)
+		return s.diagnose(log)
 	case errors.Is(err, screen.ErrStartTimeout):
 		// A session that is gone means the invocation ended at once.
 		if st, stErr := s.state(ctx); stErr == nil && st.Session == nil {
-			return s.diagnose(log, err)
+			return s.diagnose(log)
 		}
 		return fmt.Errorf("start server %q: %w", s.name, err)
 	default:
@@ -400,7 +400,7 @@ func (m *Manager) launch(ctx context.Context, s *server) error {
 }
 
 // diagnose explains a server that stopped during startup.
-func (s *server) diagnose(log *logWatcher, cause error) error {
+func (s *server) diagnose(log *logWatcher) error {
 	_, _ = log.poll(nil)
 	eula := eulaRejected(s.dir)
 	port := ""
@@ -418,7 +418,9 @@ func (s *server) diagnose(log *logWatcher, cause error) error {
 	case port != "":
 		return fmt.Errorf("%w: server %q stopped because it could not bind its port; change server-port in its properties or stop what uses it: %s", ErrPortInUse, s.name, port)
 	default:
-		return fmt.Errorf("%w: server %q (%v); see %s", ErrExited, s.name, cause, s.settings.Get("LOG_PATH"))
+		// Whether screen saw the session before it ended depends on timing,
+		// so that detail is left out and the message is stable.
+		return fmt.Errorf("%w: server %q ended before logging its start line; see %s", ErrExited, s.name, s.settings.Get("LOG_PATH"))
 	}
 }
 

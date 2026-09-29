@@ -26,7 +26,9 @@ const (
 	behaveHang  = "hang"  // logs Done but ignores stop
 	behaveEULA  = "eula"  // writes eula.txt=false, logs the EULA notice and exits
 	behavePort  = "port"  // logs a port bind failure and exits
-	behaveCrash = "crash" // exits at once without a hint
+	behaveCrash = "crash" // exits without a hint, after screen saw it once
+	// behaveVanish exits before screen ever lists the session.
+	behaveVanish = "vanish"
 )
 
 const (
@@ -131,6 +133,8 @@ func (f *fakeScreen) Run(ctx context.Context, cmd process.Command) (process.Resu
 			s.lsLeft = 2
 		case behaveCrash:
 			s.lsLeft = 2
+		case behaveVanish:
+			s.lsLeft = 1
 		}
 		return process.Result{}, nil
 	case len(args) == 7 && args[0] == "-S" && args[4] == "-X" && args[5] == "stuff":
