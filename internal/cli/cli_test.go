@@ -27,11 +27,11 @@ func TestRun(t *testing.T) {
 		code int
 		want string
 	}{
-		{"empty", nil, ExitOK, "Usage:"},
-		{"help", []string{"help"}, ExitOK, "not yet"},
+		{"empty", nil, ExitError, ""},
+		{"help", []string{"help"}, ExitOK, " command:\n\n--Setup Commands"},
 		{"server help", []string{"server"}, ExitOK, "rename"},
-		{"long help", []string{"--help"}, ExitOK, "Usage:"},
-		{"short help", []string{"-h"}, ExitOK, "Usage:"},
+		{"long help", []string{"--help"}, ExitOK, " command:\n\n--Setup Commands"},
+		{"short help", []string{"-h"}, ExitOK, " command:\n\n--Setup Commands"},
 		{"command help", []string{"help", "version"}, ExitOK, "Show the Go-port version"},
 		{"version", []string{"version"}, ExitOK, "go-port-test (commit abc123)"},
 		{"version flag", []string{"--version"}, ExitOK, "go-port-test (commit abc123)"},
@@ -59,7 +59,7 @@ func TestRun(t *testing.T) {
 				if !strings.Contains(out.String(), tt.want) || errOut.Len() != 0 {
 					t.Fatalf("stdout=%q stderr=%q", out.String(), errOut.String())
 				}
-			} else if out.Len() != 0 || strings.Count(errOut.String(), "msm: ") != 1 {
+			} else if out.Len() != 0 || strings.Count(errOut.String(), "msm: ") != 1 && errOut.String() != noSuchCommand(programPath(os.Args[0]))+"\n" {
 				t.Fatalf("failure must be printed once to stderr: stdout=%q stderr=%q", out.String(), errOut.String())
 			}
 		})
@@ -151,5 +151,78 @@ func TestRunEWriteFailure(t *testing.T) {
 	}
 	if !strings.Contains(errOut.String(), "closed") {
 		t.Fatalf("missing error: %q", errOut.String())
+	}
+}
+
+// msm help prints init/msm's command_help verbatim, and anything that
+// matches no command gets the legacy "No such command" line (on stderr,
+// with a nonzero status).
+func TestLegacyHelpAndNoSuchCommand(t *testing.T) {
+	isolateConfig(t)
+	src, err := os.ReadFile("../../init/msm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(src[strings.Index(string(src), "command_help() {"):])
+	body = body[:strings.Index(body, "\n}\n")]
+	var want strings.Builder
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case line == "echo -e":
+			want.WriteString("\n")
+		case strings.HasPrefix(line, `echo -e "`):
+			text := strings.TrimSuffix(strings.TrimPrefix(line, `echo -e "`), `"`)
+			text = strings.ReplaceAll(strings.ReplaceAll(text, `\"`, `"`), "$0", programPath(os.Args[0]))
+			want.WriteString(text + "\n")
+		}
+	}
+	for _, args := range [][]string{{"help"}, {"--help"}, {"-h"}} {
+		var out, errOut bytes.Buffer
+		if code := Run(args, nil, &out, &errOut, buildinfo.Current()); code != ExitOK || out.String() != want.String() || errOut.Len() != 0 {
+			t.Fatalf("msm %v: exit %d stderr %q\ngot:\n%s", args, code, errOut.String(), out.String())
+		}
+	}
+	for _, args := range [][]string{nil, {"survival"}, {"survival", "frobnicate"}, {"survival", "status", "now"},
+		{"stop", "later"}, {"start", "now"}, {"jargroup", "list"}} {
+		var out, errOut bytes.Buffer
+		if code := Run(args, nil, &out, &errOut, buildinfo.Current()); code != ExitError || out.Len() != 0 || errOut.String() != "No such command. See "+programPath(os.Args[0])+" help\n" {
+			t.Errorf("msm %v: exit %d stdout %q stderr %q", args, code, out.String(), errOut.String())
+		}
+	}
+}
+
+// The legacy messages name the executable as bash's $0 would: as typed
+// when it contains a '/', else the full path found on PATH.
+func TestProgramPath(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "msm"), nil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for arg0, want := range map[string]string{
+		"msm":                filepath.Join(dir, "msm"),
+		"./bin/msm":          "./bin/msm",
+		"/usr/local/bin/msm": "/usr/local/bin/msm",
+		"not-on-path":        self,
+		"":                   self,
+	} {
+		if got := programPath(arg0); got != want {
+			t.Errorf("programPath(%q) = %q, want %q", arg0, got, want)
+		}
+	}
+	var out, errOut bytes.Buffer
+	d := defaultDeps()
+	d.program = "/opt/msm/msm"
+	if code := run([]string{"help"}, nil, &out, &errOut, buildinfo.Current(), d); code != ExitOK || !strings.HasPrefix(out.String(), "Usage: /opt/msm/msm command:\n") {
+		t.Fatalf("help: %d %q", code, out.String())
+	}
+	out.Reset()
+	if code := run(nil, nil, &out, &errOut, buildinfo.Current(), d); code != ExitError || errOut.String() != "No such command. See /opt/msm/msm help\n" {
+		t.Fatalf("no command: %d %q", code, errOut.String())
 	}
 }

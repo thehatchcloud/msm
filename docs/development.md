@@ -144,9 +144,22 @@ Do not introduce a second argument parser or configuration framework.
   such as `cobra.NoArgs`, and `RunE` to return errors.
 - Keep `os.Exit` in `main`. `SilenceErrors` and `SilenceUsage` prevent duplicate
   error output; the outer `Run` function prints execution errors once.
-- Let Cobra generate help and shell completion. Built-in completion covers the
-  current command tree, not future dynamic server/world names. PowerShell
-  completion generation does not imply Windows runtime support.
+- `msm help`, `msm --help` and `msm -h` print the legacy `command_help`
+  list verbatim (`internal/cli/help.go`; `TestLegacyHelpAndNoSuchCommand`
+  compares it with `init/msm`). It lists every legacy command, including
+  those not yet ported. Cobra still generates help for subcommands
+  (`msm help server`, `msm server delete --help`) and shell completion.
+  Built-in completion covers the current command tree, not future dynamic
+  server/world names. PowerShell completion generation does not imply
+  Windows runtime support.
+- Anything that matches no command, including a bare `msm`, prints the
+  legacy `No such command. See <program> help`, on stderr and with exit
+  status 1 rather than the legacy stdout and 0 (see the compatibility
+  contract).
+- `<program>` in that line and in the help's `Usage:` line is the
+  executable's path as bash's `$0` would give it: as typed when it contains
+  a `/` (`./bin/msm`), otherwise the full path found on `PATH`
+  (`/usr/local/bin/msm`).
 - Define persistent flags on the root. Bind configuration flags with
   `BindPFlag` after defining them; do not copy flag defaults using `viper.Set`.
 - Create a private `viper.New()` instance for every command tree. No package
@@ -506,7 +519,8 @@ msm all <command> [now]     run a <server> command on every server
 
 The root command accepts the legacy server-first form directly; any first
 word that is not a Cobra subcommand is a server name (or `all`). Only these
-verbs are implemented; anything else is a usage error that exits nonzero.
+verbs are implemented; anything else gets `No such command. See msm help`
+and exits nonzero.
 P14 extends the dispatcher to the remaining commands. `--timeout` and
 `--jobs` (below) apply to every lifecycle command.
 
