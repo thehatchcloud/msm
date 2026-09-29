@@ -21,26 +21,10 @@ func newRootCommand(info buildinfo.Info, d deps) (*cobra.Command, error) {
 	var configFile string
 	var o lifecycleOptions
 	root := &cobra.Command{
-		Use:   "msm [<server>|all start|stop [now]|restart [now]|status]",
-		Short: "Manage Minecraft servers",
-		Long: `Minecraft Server Manager: Go port (alpha).
-
-Server listing, creation, renaming and deletion, and starting, stopping and
-restarting servers are implemented; console and game commands are not yet.
-This binary never invokes the legacy Bash manager and is not a replacement
-for a production installation.
-
-Server commands put the server first, as the legacy manager does:
-
-  msm <server> start          mark the server active and start it
-  msm <server> stop [now]     stop it after a warning (now: at once) and mark it inactive
-  msm <server> restart [now]  restart or start it and mark it active
-  msm <server> status         say whether it is running
-
-"all" in place of a server name runs the command on every server, changing
-each server's intent as the single-server command does. The global
-"msm start", "msm stop" and "msm restart" never change intent.`,
-		Args: cobra.ArbitraryArgs,
+		// Help is the legacy command list (help.go), not Cobra's usage.
+		Use:   programName,
+		Short: "Manage Minecraft servers (Go port, alpha)",
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runServerCommand(cmd, d, o, args)
 		},
@@ -61,6 +45,16 @@ each server's intent as the single-server command does. The global
 		},
 	}
 	root.SetVersionTemplate("{{.Version}}\n")
+	// msm help and msm --help print the legacy command list; help for a
+	// subcommand (msm help server, msm server delete --help) stays Cobra's.
+	defaultHelp := root.HelpFunc()
+	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		if cmd == root {
+			printLegacyHelp(cmd.OutOrStdout())
+			return
+		}
+		defaultHelp(cmd, args)
+	})
 	// Register these before command discovery so either ordering with a
 	// value-taking persistent flag (for example --help --config path) works.
 	root.InitDefaultHelpFlag()

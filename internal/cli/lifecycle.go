@@ -130,7 +130,7 @@ func nowArgs(verb lifecycle.Verb) cobra.PositionalArgs {
 		case len(args) == 1 && args[0] == "now" && (verb == lifecycle.VerbStop || verb == lifecycle.VerbRestart):
 			return nil
 		default:
-			return fmt.Errorf("unexpected arguments %q; see msm help", args)
+			return errNoSuchCommand
 		}
 	}
 }
@@ -145,16 +145,15 @@ var serverVerbs = map[string]lifecycle.Verb{
 // server applying the per-server command to every server. P14 extends
 // this dispatcher to the remaining server commands.
 func runServerCommand(cmd *cobra.Command, d deps, o lifecycleOptions, args []string) error {
-	if len(args) == 0 {
-		return cmd.Help()
-	}
-	if len(args) == 1 {
-		return fmt.Errorf("no such command %q; see msm help", args[0])
+	// Anything that matches no command gets the legacy answer, as
+	// call_command gives it.
+	if len(args) < 2 {
+		return errNoSuchCommand
 	}
 	target, word := args[0], args[1]
 	verb, ok := serverVerbs[word]
 	if !ok {
-		return fmt.Errorf("no such command \"%s %s\"; server commands implemented so far: start, stop [now], restart [now], status", target, word)
+		return errNoSuchCommand
 	}
 	now := false
 	switch rest := args[2:]; {
@@ -162,7 +161,7 @@ func runServerCommand(cmd *cobra.Command, d deps, o lifecycleOptions, args []str
 	case len(rest) == 1 && rest[0] == "now" && (verb == lifecycle.VerbStop || verb == lifecycle.VerbRestart):
 		now = true
 	default:
-		return fmt.Errorf("unexpected arguments %q after \"%s %s\"", rest, target, word)
+		return errNoSuchCommand
 	}
 	if err := o.validate(); err != nil {
 		return err

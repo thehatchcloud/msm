@@ -4,6 +4,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -38,7 +39,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, info buildinf
 		defer stop()
 		err = root.ExecuteContext(ctx)
 	}
-	if err != nil {
+	switch {
+	case errors.Is(err, errNoSuchCommand):
+		// The legacy line exactly, without the "msm: " error prefix.
+		fmt.Fprintln(stderr, err)
+		return ExitError
+	case err != nil:
 		fmt.Fprintf(stderr, "msm: %v\n", err)
 		return ExitError
 	}
