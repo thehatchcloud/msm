@@ -7,6 +7,7 @@ import (
 
 	"github.com/thehatchcloud/msm/internal/buildinfo"
 	"github.com/thehatchcloud/msm/internal/config"
+	"github.com/thehatchcloud/msm/internal/lifecycle"
 )
 
 // NewRootCommand constructs a new command tree and a private Viper instance.
@@ -18,14 +19,31 @@ func NewRootCommand(info buildinfo.Info) (*cobra.Command, error) {
 func newRootCommand(info buildinfo.Info, d deps) (*cobra.Command, error) {
 	v := config.New()
 	var configFile string
+	var o lifecycleOptions
 	root := &cobra.Command{
-		Use:   "msm",
+		Use:   "msm [<server>|all start|stop [now]|restart [now]|status]",
 		Short: "Manage Minecraft servers",
 		Long: `Minecraft Server Manager: Go port (alpha).
 
-Server listing, creation, renaming and deletion are implemented; starting,
-stopping and console commands are not yet. This binary never invokes the
-legacy Bash manager and is not a replacement for a production installation.`,
+Server listing, creation, renaming and deletion, and starting, stopping and
+restarting servers are implemented; console and game commands are not yet.
+This binary never invokes the legacy Bash manager and is not a replacement
+for a production installation.
+
+Server commands put the server first, as the legacy manager does:
+
+  msm <server> start          mark the server active and start it
+  msm <server> stop [now]     stop it after a warning (now: at once) and mark it inactive
+  msm <server> restart [now]  restart or start it and mark it active
+  msm <server> status         say whether it is running
+
+"all" in place of a server name runs the command on every server, changing
+each server's intent as the single-server command does. The global
+"msm start", "msm stop" and "msm restart" never change intent.`,
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runServerCommand(cmd, d, o, args)
+		},
 		Version:       info.String(),
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -52,6 +70,9 @@ legacy Bash manager and is not a replacement for a production installation.`,
 	if err := v.BindPFlag("debug", root.PersistentFlags().Lookup("debug")); err != nil {
 		return nil, fmt.Errorf("bind debug flag: %w", err)
 	}
-	root.AddCommand(newVersionCommand(info), newServerCommand(d))
+	o.register(root)
+	root.AddCommand(newVersionCommand(info), newServerCommand(d),
+		newGlobalCommand(d, lifecycle.VerbStart), newGlobalCommand(d, lifecycle.VerbStop),
+		newGlobalCommand(d, lifecycle.VerbRestart))
 	return root, nil
 }

@@ -122,6 +122,12 @@ been validated on every machine. P04 and P16 own that validation.
 - `internal/servers`: server instance management (list, create, rename,
   delete) over one storage root, and the screen-backed check of whether a
   server is running.
+- `internal/profiles`: the parts of the legacy version profiles that
+  lifecycle needs (log path, log-line prefix, start event, save-all
+  confirmation), as inert data; P08 extends it.
+- `internal/lifecycle`: start, stop, restart and status for one server,
+  every server (`all`) or the global set, with countdowns, deadlines and
+  bounded bulk concurrency.
 - `compatibility`: Go tests verifying P01 source inventories and safe fixtures.
 
 Do not add a package for every future feature in advance. Add manager
@@ -153,10 +159,12 @@ Do not introduce a second argument parser or configuration framework.
   instances across goroutines. Keep filesystem/process behavior out of command
   constructors, and test with fresh commands and isolated configuration homes.
 
-Future command work must preserve the P01 server-first syntax
-(`msm <server> start`), rather than silently changing it to verb-first syntax.
-Design that compatibility adapter around Cobra in P14; server commands are not
-implemented by this foundation.
+Command work must preserve the P01 server-first syntax (`msm <server>
+start`), rather than silently changing it to verb-first syntax. P06 adds the
+first part of that adapter: the root command accepts arbitrary arguments and
+dispatches `<server>|all <verb>` itself (`runServerCommand`), while real
+subcommands such as `server` and the global `start` keep priority. P14
+extends it to every server command.
 
 ## Native configuration foundation
 
@@ -295,8 +303,8 @@ is their first caller.
 ## GNU screen backend
 
 P04 adds `internal/screen`, which keeps GNU screen as the console host
-instead of introducing a daemon or custom supervisor. Nothing in the CLI calls
-it yet; P06 (lifecycle) and P08 (console and game commands) will.
+instead of introducing a daemon or custom supervisor. P06 (lifecycle) uses it;
+P08 (console and game commands) will.
 
 External tools: `screen` is the only program this package runs. It reads the
 process table directly (`/proc` on Linux, `sysctl` `kern.proc`/`kern.procargs2`
@@ -426,9 +434,9 @@ descriptor.
   without root) is reported as unknown. If `screen` is not on `PATH`, no
   server can be running in it. Leftover staged operations, symbolic links and
   directories with invalid names are listed as warnings on stderr, never as
-  servers. The expected invocation is `INVOCATION` split on white space until
-  P06 adds its launch-argument parser; a mismatch can only make a server look
-  occupied, never stopped.
+  servers. The expected invocation is the argument vector P06 launches
+  (`legacyconf.ServerSettings.Invocation`); a mismatch can only make a server
+  look occupied, never stopped.
 - **Create.** Writes `[]` into the whitelist, banned-IPs, banned-players and
   ops JSON files, `ops.txt` from `DEFAULT_OPS_LIST` (comma separated, spaces
   removed), an empty properties file, and the world storage directory with
@@ -478,6 +486,138 @@ CT-CMD-012 (`TestRename`) and CT-SURF-038 (`TestServerDeleteConfirmation`).
 Privilege dropping is tested with a recorded `DropTo`; the real drop was
 checked by hand by running the binary as root with an unprivileged
 `USERNAME`.
+
+## Server lifecycle (P06)
+
+`internal/lifecycle` and the server-first commands start, stop, restart and
+report on servers (`compatibility/commands.tsv` CMD-001 to CMD-005 and CMD-020
+to CMD-025, SURF-005):
+
+```text
+msm start                   start every active server that is stopped
+msm stop [now]              stop every running server (active or not)
+msm restart [now]           stop every running server, then start the active ones
+msm <server> start          mark the server active and start it
+msm <server> stop [now]     stop it and mark it inactive
+msm <server> restart [now]  restart (or start) it and mark it active
+msm <server> status         say whether it is running
+msm all <command> [now]     run a <server> command on every server
+```
+
+The root command accepts the legacy server-first form directly; any first
+word that is not a Cobra subcommand is a server name (or `all`). Only these
+verbs are implemented; anything else is a usage error that exits nonzero.
+P14 extends the dispatcher to the remaining commands. `--timeout` and
+`--jobs` (below) apply to every lifecycle command.
+
+### Intent and bulk behavior
+
+- **Intent.** The per-server commands change the `FLAG_ACTIVE_PATH` marker;
+  the global commands never do. `msm all stop` therefore marks every server
+  inactive, whereas `msm stop` leaves every marker alone (tested by
+  `TestGlobalStopIsNotAllStop`). Start and restart mark the server active
+  first, even if the start then fails, as `server_start` does. Stop marks it
+  inactive once the stop is committed; an aborted countdown changes nothing
+  (DEV-019).
+- **Global start** starts active stopped servers and reports inactive running
+  ones with the legacy wording. **Global restart** stops every running
+  server, then starts the active set; a server that failed to stop is not
+  started, and an interrupted stop phase starts nothing.
+- **Concurrency.** Each server operation holds that server's lock
+  (`servers.Manager.LockServer`), so two managers never act on one server at
+  once: a second `msm <server> start` waits and then finds it running. Bulk
+  commands work on up to `--jobs` servers at once (default 4); each output
+  line is prefixed with its server's name and never interleaves with
+  another. `msm all status` takes no locks.
+- **Aggregate status.** A bulk command attempts every server and fails if
+  any failed, with one error listing every failure in name order, so the
+  message and exit status do not depend on scheduling
+  (`TestBulkPartialFailure`).
+
+### Starting
+
+1. The invocation is `INVOCATION` split into an argument vector without a
+   shell (`legacyconf.ServerSettings.Invocation`, DEV-001). Spaces and tabs
+   separate words; single quotes are literal; double quotes are literal but
+   may not contain `$`, a backtick or `\`. Any other unquoted character a
+   shell would treat specially (`;&|<>()$\*?[]{}~#!` and the backtick) is
+   refused, not guessed at; quote an argument that needs one. The
+   placeholders `{RAM}` (a positive whole number) and `{JAR}` are then
+   filled in each word, so a JAR path with spaces stays one argument.
+2. Preflight, before anything is launched: the program must be an
+   executable file (searched on `PATH` when it has no `/`), `JAR_PATH` must
+   be a regular file starting with the ZIP signature, and screen must be
+   installed and at least 4.01.
+3. The log is marked, the server is launched in a detached screen session
+   as its owner, and the command waits for a fresh start line: the profile's
+   line prefix followed by `Done` (DEV-010). Lines already in the log never
+   count: a log the server appends to is read from where it ended, and one
+   it replaces (Minecraft 1.7+ moves `logs/latest.log` aside) or rewrites is
+   read from the start, even if the file system reuses the inode number.
+4. If the process ends first, the command fails and says why when it can:
+   the EULA is not accepted (`eula.txt` without `eula=true`, or the EULA
+   notice in the log), or the port is in use (`FAILED TO BIND TO PORT` in
+   the log). The manager never writes `eula.txt`.
+
+### Stopping
+
+Unless `now` is given, the players are warned with `MESSAGE_STOP` (or
+`MESSAGE_RESTART`) and the command waits `STOP_DELAY` (or `RESTART_DELAY`)
+seconds. Ctrl+C or SIGTERM during that countdown sends the abort message
+and leaves the server running. Then, with or without `now`: `save-all` is
+sent and its profile confirmation awaited for the profile's timeout (an
+unconfirmed save is reported and the stop continues, since `stop` saves
+too), `stop` is sent, and the command waits for the process to end.
+Synchronizing RAM worlds to disk joins this sequence in P12.
+
+### Deadlines
+
+Readiness and stopping each wait at most 5 minutes (readiness at least the
+profile's start timeout), or `--timeout`. At the deadline the command fails
+and names what is still running; nothing is ever killed or quit
+(DEV-019). The window process must appear within 15 seconds of launch.
+
+### Version profiles
+
+`internal/profiles` encodes, for the five shipped profiles, only what
+lifecycle needs: `LOG_PATH`, the log-line prefix (`console_event REGEX`),
+the `START` event and the `SAVE_ALL` confirmation, with inheritance
+resolved. `TestProfilesMatchVersioningFiles` reads `versioning/*.sh` as
+text and requires the Go data to match. `VERSION` selects the newest
+profile of the same type that is not newer (numeric comparison); an unset
+or unmatched `VERSION` uses `minecraft/1.7.0`, as the legacy manager assumed
+the newest profile. The profile's `LOG_PATH` sits between a per-server
+`msm-log-path` and `DEFAULT_LOG_PATH`, as in `server_property`. Modern
+servers use the 1.7 log format; their `save-all` confirmation differs, so it
+is reported as unconfirmed until P08 adds a modern profile.
+
+### Privileges
+
+As root, the manager takes the server lock as root and runs screen, and
+therefore the server, with the owner's credentials for that child only
+(P04). The active marker is changed through a descriptor for the server
+directory, opened without following a symbolic link, and a new marker is
+handed to the owner; as root, a `FLAG_ACTIVE_PATH` outside the server
+directory is refused. The log, JAR and `eula.txt` are only read; the log is
+opened non-blocking and must be a regular file. An unprivileged caller must
+be the server's owner.
+
+External tools: only `screen`, which runs the configured invocation
+(normally `java`). Nothing goes through a shell.
+
+### Tests
+
+`internal/lifecycle` runs the real screen backend over a simulated screen
+and Minecraft (`fake_test.go`) with a clock that advances virtually, so
+countdowns and deadlines are instant and deterministic. It covers intent for
+every command, `now`, the countdown abort, stale start lines, EULA
+rejection, missing Java, missing and invalid JARs, port conflicts, crashes,
+a server that ignores `stop`, simultaneous managers, unproven sessions,
+bounded concurrency and partial bulk failure. `native_test.go` repeats the
+main flows against real GNU screen with this test binary as the server
+(`TestFakeMinecraft`), under the same `MSM_REQUIRE_SCREEN` rules as P04.
+Contract IDs are in the test comments: CT-CMD-001 to CT-CMD-005 and
+CT-CMD-020 to CT-CMD-025.
 
 ## GitHub Actions
 

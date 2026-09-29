@@ -27,6 +27,7 @@ import (
 	"github.com/thehatchcloud/msm/internal/filelock"
 	"github.com/thehatchcloud/msm/internal/identity"
 	"github.com/thehatchcloud/msm/internal/legacyconf"
+	"github.com/thehatchcloud/msm/internal/profiles"
 	"github.com/thehatchcloud/msm/internal/safepath"
 	"github.com/thehatchcloud/msm/internal/serverprops"
 )
@@ -186,10 +187,20 @@ func (m *Manager) settings(name, dir string) (*legacyconf.ServerSettings, error)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("servers: %w", err)
 	}
-	return legacyconf.ResolveServer(legacyconf.ServerInput{
-		Name: name, Dir: dir, Global: m.cfg.Global, Properties: props,
-	})
+	in := legacyconf.ServerInput{Name: name, Dir: dir, Global: m.cfg.Global, Properties: props}
+	s, err := legacyconf.ResolveServer(in)
+	if err != nil {
+		return nil, err
+	}
+	// VERSION selects the profile that supplies LOG_PATH and the other
+	// profile-dependent settings; VERSION itself never comes from it.
+	profile, _ := profiles.Select(s.Get("VERSION"))
+	in.Profile = profile.Settings()
+	return legacyconf.ResolveServer(in)
 }
+
+// Owner is the OS user a server's files and process belong to.
+func (m *Manager) Owner(s *legacyconf.ServerSettings) (identity.Identity, error) { return m.owner(s) }
 
 // owner is the OS user a server's process runs as.
 func (m *Manager) owner(s *legacyconf.ServerSettings) (identity.Identity, error) {

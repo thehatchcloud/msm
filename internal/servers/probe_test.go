@@ -3,7 +3,6 @@ package servers
 import (
 	"context"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -36,7 +35,10 @@ func TestScreenProber(t *testing.T) {
 		t.Fatal(err)
 	}
 	me := identity.Identity{Username: "me", UID: os.Geteuid(), GID: os.Getegid()}
-	invocation := strings.Fields(s.Get("INVOCATION"))
+	invocation, err := s.Invocation()
+	if err != nil {
+		t.Fatal(err)
+	}
 	session := "There is a screen on:\n\t42.msm-alpha\t(Detached)\n1 Socket in /tmp/s.\n"
 	two := "There are screens on:\n\t42.msm-alpha\t(Detached)\n\t43.msm-alpha\t(Detached)\n2 Sockets in /tmp/s.\n"
 	cases := []struct {

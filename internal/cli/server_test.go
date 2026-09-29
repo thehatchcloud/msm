@@ -10,8 +10,10 @@ import (
 	"testing"
 
 	"github.com/thehatchcloud/msm/internal/buildinfo"
+	"github.com/thehatchcloud/msm/internal/clock"
 	"github.com/thehatchcloud/msm/internal/identity"
 	"github.com/thehatchcloud/msm/internal/legacyconf"
+	"github.com/thehatchcloud/msm/internal/lifecycle"
 	"github.com/thehatchcloud/msm/internal/servers"
 )
 
@@ -63,6 +65,16 @@ func (f *serverFixture) run(t *testing.T, stdin string, args ...string) (int, st
 			cfg.Prober = f.states
 			return servers.New(cfg)
 		},
+	}
+	// Without screen nothing can run, so lifecycle commands exercise intent
+	// and dispatch here; internal/lifecycle tests the running cases.
+	d.lifecycle = func(w io.Writer, o lifecycleOptions) (*lifecycle.Manager, error) {
+		m, err := d.servers(w)
+		if err != nil {
+			return nil, err
+		}
+		return lifecycle.New(lifecycle.Config{Servers: m, Clock: clock.Real{}, Timeout: o.timeout, Jobs: o.jobs,
+			Sessions: func(identity.Identity) (lifecycle.Sessions, error) { return nil, lifecycle.ErrNoScreen }})
 	}
 	var out, errOut bytes.Buffer
 	code := run(args, strings.NewReader(stdin), &out, &errOut, buildinfo.Info{Version: "test"}, d)
@@ -162,5 +174,51 @@ func TestServerCommandsReportBadMsmConf(t *testing.T) {
 	os.WriteFile(conf, []byte("SERVER_STORAGE_PATH=$(rm -rf /)\n"), 0o644)
 	if code, _, errOut := f.run(t, "", "server", "list"); code != ExitError || !strings.Contains(errOut, conf) {
 		t.Fatalf("exit %d, %q", code, errOut)
+	}
+}
+
+// CT-CMD-001 to CT-CMD-005 and CT-CMD-020 to CT-CMD-025 through the CLI:
+// the server-first grammar, "all", and which commands change intent.
+func TestLifecycleCommands(t *testing.T) {
+	f := newServerFixture(t)
+	f.mustRun(t, "server", "create", "a")
+	f.mustRun(t, "server", "create", "b")
+	active := func(name string) bool {
+		_, err := os.Lstat(filepath.Join(f.root, name, "active"))
+		return err == nil
+	}
+	if out := f.mustRun(t, "a", "status"); out != "Server \"a\" is stopped.\n" {
+		t.Fatalf("status = %q", out)
+	}
+	// Start marks the server active even though it cannot start here.
+	if code, _, errOut := f.run(t, "", "a", "start"); code != ExitError || !strings.Contains(errOut, "screen is not installed") || !active("a") {
+		t.Fatalf("start: %d %q active=%v", code, errOut, active("a"))
+	}
+	if code, _, _ := f.run(t, "", "b", "restart", "now"); code != ExitError || !active("b") {
+		t.Fatal("restart now did not mark b active")
+	}
+	// The global stop leaves intent alone.
+	if out := f.mustRun(t, "stop", "now"); !strings.Contains(out, "No servers were running.") || !active("a") || !active("b") {
+		t.Fatalf("global stop: %q", out)
+	}
+	if code, _, errOut := f.run(t, "", "start", "--jobs", "1"); code != ExitError || !strings.Contains(errOut, "2 of 2 servers failed") {
+		t.Fatalf("global start: %d %q", code, errOut)
+	}
+	// msm a stop marks only a inactive; msm all stop marks every server.
+	if out := f.mustRun(t, "a", "stop"); !strings.Contains(out, "not running") || active("a") || !active("b") {
+		t.Fatalf("a stop: %q", out)
+	}
+	f.mustRun(t, "all", "stop", "now")
+	if active("a") || active("b") {
+		t.Fatal("all stop left a server active")
+	}
+	if out := f.mustRun(t, "all", "status"); !strings.Contains(out, "a: Server \"a\" is stopped.") || !strings.Contains(out, "b: Server \"b\" is stopped.") {
+		t.Fatalf("all status: %q", out)
+	}
+	if code, _, errOut := f.run(t, "", "missing", "start"); code != ExitError || !strings.Contains(errOut, "no server with the name") {
+		t.Fatalf("missing: %d %q", code, errOut)
+	}
+	if code, _, errOut := f.run(t, "", "a", "stop", "--timeout", "-1s"); code != ExitError || !strings.Contains(errOut, "--timeout") {
+		t.Fatalf("negative timeout: %d %q", code, errOut)
 	}
 }
