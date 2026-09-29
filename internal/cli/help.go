@@ -4,10 +4,36 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 )
 
-// programName is how the legacy messages name the manager ($0 in init/msm).
+// programName is the command's name in Cobra's own help and errors.
 const programName = "msm"
+
+// programPath is what the legacy messages print for $0: the path the
+// executable was invoked by. Bash sets $0 to the path it found a script
+// at, so a bare name run from PATH shows as the full path it resolved to;
+// a path given with a '/' is shown as typed. If neither works, the
+// executable's own path is used, and finally the bare name.
+func programPath(arg0 string) string {
+	if strings.Contains(arg0, "/") {
+		return arg0
+	}
+	if arg0 != "" {
+		if p, err := exec.LookPath(arg0); err == nil {
+			if abs, err := filepath.Abs(p); err == nil {
+				return abs
+			}
+		}
+	}
+	if p, err := os.Executable(); err == nil {
+		return p
+	}
+	return programName
+}
 
 // legacyHelp is command_help from init/msm, verbatim, with %s for $0. It
 // lists every legacy command, including those the Go port has not
@@ -77,13 +103,17 @@ const legacyHelp = `Usage: %s command:
   update [--noinput]                            Replaces MSM files with the latest recommended versions
 `
 
-func printLegacyHelp(w io.Writer) error {
-	_, err := fmt.Fprintf(w, legacyHelp, programName)
+func printLegacyHelp(w io.Writer, program string) error {
+	_, err := fmt.Fprintf(w, legacyHelp, program)
 	return err
 }
 
 // errNoSuchCommand is the legacy answer to anything that matches no
-// command: "No such command. See msm help". Unlike the legacy manager it
-// goes to stderr and exits nonzero (docs/compatibility/README.md, "Output,
-// errors, and prompts").
-var errNoSuchCommand = errors.New("No such command. See " + programName + " help")
+// command, printed by run as "No such command. See <program> help". Unlike
+// the legacy manager it goes to stderr and exits nonzero
+// (docs/compatibility/README.md, "Output, errors, and prompts").
+var errNoSuchCommand = errors.New("no such command")
+
+func noSuchCommand(program string) string {
+	return "No such command. See " + program + " help"
+}

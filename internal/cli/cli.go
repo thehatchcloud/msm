@@ -42,7 +42,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, info buildinf
 	switch {
 	case errors.Is(err, errNoSuchCommand):
 		// The legacy line exactly, without the "msm: " error prefix.
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, noSuchCommand(d.program))
 		return ExitError
 	case err != nil:
 		fmt.Fprintf(stderr, "msm: %v\n", err)

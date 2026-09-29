@@ -50,7 +50,7 @@ func newRootCommand(info buildinfo.Info, d deps) (*cobra.Command, error) {
 	defaultHelp := root.HelpFunc()
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		if cmd == root {
-			printLegacyHelp(cmd.OutOrStdout())
+			printLegacyHelp(cmd.OutOrStdout(), d.program)
 			return
 		}
 		defaultHelp(cmd, args)

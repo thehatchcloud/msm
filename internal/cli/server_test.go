@@ -57,6 +57,7 @@ func (f *serverFixture) run(t *testing.T, stdin string, args ...string) (int, st
 	t.Helper()
 	d := deps{
 		isTerminal: func(io.Reader) bool { return f.terminal },
+		program:    "msm",
 		servers: func(w io.Writer) (*servers.Manager, error) {
 			cfg, err := hostConfig(w)
 			if err != nil {

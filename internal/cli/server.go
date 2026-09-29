@@ -34,10 +34,12 @@ type deps struct {
 	servers func(w io.Writer) (*servers.Manager, error)
 	// lifecycle builds the lifecycle manager over servers.
 	lifecycle func(w io.Writer, o lifecycleOptions) (*lifecycle.Manager, error)
+	// program is how the legacy messages name the executable ($0).
+	program string
 }
 
 func defaultDeps() deps {
-	d := deps{isTerminal: readerIsTerminal, servers: hostServers}
+	d := deps{isTerminal: readerIsTerminal, servers: hostServers, program: programPath(os.Args[0])}
 	d.lifecycle = hostLifecycle(d)
 	return d
 }
