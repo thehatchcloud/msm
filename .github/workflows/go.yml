@@ -108,6 +108,26 @@ jobs:
           fi
           "$RUNNER_TEMP/msm" server delete --yes smoked
           "$RUNNER_TEMP/msm" server list | grep -Fx '[There are no servers]'
+          # Lifecycle through the installed screen, with the lifecycle test
+          # binary standing in for Java (TestFakeMinecraft).
+          go test -c -o "$RUNNER_TEMP/fakemc" ./internal/lifecycle
+          export SCREENDIR="$RUNNER_TEMP/screens"
+          mkdir -m 700 "$SCREENDIR"
+          export PATH="$(dirname "$MSM_TEST_SCREEN"):$PATH"
+          "$RUNNER_TEMP/msm" server create live
+          live="$smoke/servers/live"
+          printf 'PK\003\004' > "$live/server.jar"
+          printf "msm-invocation='%s' '-test.run=^TestFakeMinecraft\$' fake-minecraft ok\nmsm-stop-delay=1\n" "$RUNNER_TEMP/fakemc" > "$live/server.properties"
+          "$RUNNER_TEMP/msm" live start
+          test -e "$live/active"
+          "$RUNNER_TEMP/msm" live status | grep -Fx 'Server "live" is running.'
+          "$RUNNER_TEMP/msm" stop now
+          test -e "$live/active"
+          "$RUNNER_TEMP/msm" start
+          "$RUNNER_TEMP/msm" live stop
+          test ! -e "$live/active"
+          grep -F 'SERVER SHUTTING DOWN IN 1 SECONDS!' "$live/logs/latest.log"
+          "$RUNNER_TEMP/msm" all status | grep -Fx 'live: Server "live" is stopped.'
 
   vulnerability:
     name: Go vulnerabilities

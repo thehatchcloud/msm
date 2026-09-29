@@ -782,3 +782,32 @@ func TestNewValidatesConfig(t *testing.T) {
 		}
 	}
 }
+
+// The server's VERSION selects the profile that supplies LOG_PATH, below a
+// per-server override and above DEFAULT_LOG_PATH, as in server_property.
+func TestSettingsUseVersionProfile(t *testing.T) {
+	e := newEnv(t, "DEFAULT_LOG_PATH=\"global.log\"\n")
+	dir := e.create(t, "s")
+	props := filepath.Join(dir, "server.properties")
+	for _, tc := range []struct{ props, want string }{
+		{"", "logs/latest.log"},
+		{"msm-version=minecraft/1.2.5\n", "server.log"},
+		{"msm-version=minecraft/1.21.4\n", "logs/latest.log"},
+		{"msm-version=minecraft/1.2.5\nmsm-log-path=/var/log/s.log\n", "/var/log/s.log"},
+	} {
+		if err := os.WriteFile(props, []byte(tc.props), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		s, err := e.mgr.Settings("s")
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := tc.want
+		if !filepath.IsAbs(want) {
+			want = filepath.Join(dir, want)
+		}
+		if got := s.Get("LOG_PATH"); got != want {
+			t.Errorf("%q: LOG_PATH = %s, want %s", tc.props, got, want)
+		}
+	}
+}

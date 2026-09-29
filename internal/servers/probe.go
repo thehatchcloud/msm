@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/thehatchcloud/msm/internal/clock"
 	"github.com/thehatchcloud/msm/internal/identity"
@@ -60,9 +59,10 @@ type ScreenProber struct {
 }
 
 // Probe maps a screen observation onto a State. The expected invocation is
-// INVOCATION split on white space; P06 replaces this with its launch-argument
-// parser. A mismatch never reads as Stopped, only as Occupied, so an
-// imprecise split can make a check stricter but never unsafe.
+// the argument vector the server is launched with
+// (legacyconf.ServerSettings.Invocation). A mismatch never reads as Stopped,
+// only as Occupied; an INVOCATION that cannot be parsed matches no process,
+// so any live session with the name is Occupied.
 func (p ScreenProber) Probe(ctx context.Context, s *legacyconf.ServerSettings, owner identity.Identity) State {
 	if p.Screen == "" {
 		return State{Kind: Stopped, Detail: "screen is not installed"}
@@ -74,12 +74,16 @@ func (p ScreenProber) Probe(ctx context.Context, s *legacyconf.ServerSettings, o
 	if err != nil {
 		return State{Kind: Unknown, Detail: err.Error()}
 	}
-	st, err := backend.Status(ctx, s.Get("SCREEN_NAME"), strings.Fields(s.Get("INVOCATION")))
+	want, invErr := s.Invocation()
+	st, err := backend.Status(ctx, s.Get("SCREEN_NAME"), want)
 	switch {
 	case errors.Is(err, screen.ErrDuplicate):
 		return State{Kind: Occupied, Detail: err.Error()}
 	case err != nil:
 		return State{Kind: Unknown, Detail: err.Error()}
+	}
+	if st.Session != nil && invErr != nil {
+		return State{Kind: Occupied, Detail: fmt.Sprintf("screen session %s cannot be matched to the server: %v", st.Session.ID, invErr)}
 	}
 	switch st.Liveness {
 	case screen.Stopped:

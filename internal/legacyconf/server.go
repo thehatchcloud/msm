@@ -98,6 +98,9 @@ type ServerSettings struct {
 	Name, Dir string
 	values    map[string]string
 	sources   map[string]Source
+	// raw holds each winning value before post-processing, so INVOCATION
+	// can be split into arguments before its placeholders are filled.
+	raw map[string]string
 	// Warnings are non-fatal notes, such as an msm-* override that names
 	// no registered setting and is therefore ignored, as it is by the
 	// legacy manager.
@@ -128,7 +131,7 @@ func ResolveServer(in ServerInput) (*ServerSettings, error) {
 		return nil, fmt.Errorf("legacyconf: server %q directory %q must be absolute", in.Name, in.Dir)
 	}
 	s := &ServerSettings{Name: in.Name, Dir: filepath.Clean(in.Dir),
-		values: map[string]string{}, sources: map[string]Source{}}
+		values: map[string]string{}, sources: map[string]Source{}, raw: map[string]string{}}
 	for _, setting := range serverSettings {
 		value, source := setting.Default, FromDefault
 		if in.Global != nil {
@@ -145,6 +148,7 @@ func ResolveServer(in ServerInput) (*ServerSettings, error) {
 			}
 		}
 		s.values[setting.Name], s.sources[setting.Name] = value, source
+		s.raw[setting.Name] = value
 	}
 	s.postProcess()
 	if in.Properties != nil {

@@ -3,8 +3,12 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/thehatchcloud/msm/internal/buildinfo"
 )
@@ -28,7 +32,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, info buildinf
 		root.SetErr(stderr)
 		// A non-nil empty slice prevents Cobra from falling back to os.Args.
 		root.SetArgs(append([]string{}, args...))
-		err = root.Execute()
+		// Ctrl+C or a termination request cancels the command's context: a
+		// countdown aborts and tells the players; a wait stops waiting.
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		err = root.ExecuteContext(ctx)
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "msm: %v\n", err)

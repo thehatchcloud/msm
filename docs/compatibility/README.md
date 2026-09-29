@@ -70,6 +70,14 @@ liveness:
 `now` removes the warning and delay. It is not permission to skip `save-all`,
 normal Minecraft shutdown, wait-for-stop, or RAM-world synchronization.
 
+Intent changes when the operation commits. A countdown aborted with Ctrl+C
+sends the abort message, leaves the server running and leaves its intent as
+it was; the legacy per-server stop had already removed the marker (DEV-019).
+
+`msm all <command>` runs the per-server command on every server, so it
+changes intent where the global command does not: `msm all stop` marks every
+server inactive, while `msm stop` leaves every marker alone.
+
 The source accepts `all` for any registered `<name:server>` command, including
 commands not advertised by `help`. The Go port will preserve useful bulk
 targeting, but P01 treats the hidden breadth as a source/documentation

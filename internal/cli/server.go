@@ -17,6 +17,7 @@ import (
 	"github.com/thehatchcloud/msm/internal/config"
 	"github.com/thehatchcloud/msm/internal/identity"
 	"github.com/thehatchcloud/msm/internal/legacyconf"
+	"github.com/thehatchcloud/msm/internal/lifecycle"
 	"github.com/thehatchcloud/msm/internal/process"
 	"github.com/thehatchcloud/msm/internal/screen"
 	"github.com/thehatchcloud/msm/internal/servers"
@@ -31,10 +32,14 @@ type deps struct {
 	isTerminal func(r io.Reader) bool
 	// servers builds the server manager, writing import warnings to w.
 	servers func(w io.Writer) (*servers.Manager, error)
+	// lifecycle builds the lifecycle manager over servers.
+	lifecycle func(w io.Writer, o lifecycleOptions) (*lifecycle.Manager, error)
 }
 
 func defaultDeps() deps {
-	return deps{isTerminal: readerIsTerminal, servers: hostServers}
+	d := deps{isTerminal: readerIsTerminal, servers: hostServers}
+	d.lifecycle = hostLifecycle(d)
+	return d
 }
 
 func readerIsTerminal(r io.Reader) bool {
