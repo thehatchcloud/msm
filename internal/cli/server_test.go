@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +14,7 @@ import (
 	"github.com/thehatchcloud/msm/internal/buildinfo"
 	"github.com/thehatchcloud/msm/internal/clock"
 	"github.com/thehatchcloud/msm/internal/identity"
+	"github.com/thehatchcloud/msm/internal/jars"
 	"github.com/thehatchcloud/msm/internal/legacyconf"
 	"github.com/thehatchcloud/msm/internal/lifecycle"
 	"github.com/thehatchcloud/msm/internal/servers"
@@ -25,6 +28,8 @@ func (p stateProber) Probe(_ context.Context, s *legacyconf.ServerSettings, _ id
 
 type serverFixture struct {
 	root     string
+	jars     string
+	http     *http.Client
 	states   stateProber
 	terminal bool
 }
@@ -45,12 +50,16 @@ func newServerFixture(t *testing.T) *serverFixture {
 		t.Fatal(err)
 	}
 	conf := filepath.Join(base, "msm.conf")
-	data := "USERNAME=\"" + me.Username + "\"\nSERVER_STORAGE_PATH=\"" + root + "\"\nDEFAULT_USERNAME=\"" + me.Username + "\"\n"
+	jarRoot := filepath.Join(base, "jars")
+	if err := os.Mkdir(jarRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data := "USERNAME=\"" + me.Username + "\"\nSERVER_STORAGE_PATH=\"" + root + "\"\nDEFAULT_USERNAME=\"" + me.Username + "\"\nJAR_STORAGE_PATH=\"" + jarRoot + "\"\n"
 	if err := os.WriteFile(conf, []byte(data), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("MSM_CONF", conf)
-	return &serverFixture{root: root, states: stateProber{}}
+	return &serverFixture{root: root, jars: jarRoot, states: stateProber{}}
 }
 
 func (f *serverFixture) run(t *testing.T, stdin string, args ...string) (int, string, string) {
@@ -59,7 +68,7 @@ func (f *serverFixture) run(t *testing.T, stdin string, args ...string) (int, st
 		isTerminal: func(io.Reader) bool { return f.terminal },
 		program:    "msm",
 		servers: func(w io.Writer) (*servers.Manager, error) {
-			cfg, err := hostConfig(w)
+			cfg, _, err := hostConfig(w)
 			if err != nil {
 				return nil, err
 			}
@@ -76,6 +85,19 @@ func (f *serverFixture) run(t *testing.T, stdin string, args ...string) (int, st
 		}
 		return lifecycle.New(lifecycle.Config{Servers: m, Clock: clock.Real{}, Timeout: o.timeout, Jobs: o.jobs,
 			Sessions: func(identity.Identity) (lifecycle.Sessions, error) { return nil, lifecycle.ErrNoScreen }})
+	}
+	d.jars = func(w io.Writer) (*jars.Manager, error) {
+		cfg, js, err := hostConfig(w)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Prober = f.states
+		sm, err := servers.New(cfg)
+		if err != nil {
+			return nil, err
+		}
+		return jars.New(jars.Config{Root: js.root, Target: js.target, DownloadDir: js.downloadDir,
+			Owner: cfg.Owner, Servers: sm, Clock: clock.Real{}, HTTP: f.http})
 	}
 	var out, errOut bytes.Buffer
 	code := run(args, strings.NewReader(stdin), &out, &errOut, buildinfo.Info{Version: "test"}, d)
@@ -221,5 +243,76 @@ func TestLifecycleCommands(t *testing.T) {
 	}
 	if code, _, errOut := f.run(t, "", "a", "stop", "--timeout", "-1s"); code != ExitError || !strings.Contains(errOut, "--timeout") {
 		t.Fatalf("negative timeout: %d %q", code, errOut)
+	}
+}
+
+// CT-CMD-013 to CT-CMD-018, CT-CMD-036, CT-CMD-037, CT-SURF-039 through the
+// CLI, with the legacy messages.
+func TestJargroupCommands(t *testing.T) {
+	f := newServerFixture(t)
+	jar := []byte("PK\x03\x04jar")
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.Write(jar) }))
+	defer srv.Close()
+	f.http = srv.Client()
+
+	if out := f.mustRun(t, "jargroup", "list"); out != "" {
+		t.Fatalf("empty list = %q", out)
+	}
+	if out := f.mustRun(t, "jargroup", "create", "paper", srv.URL+"/paper.jar"); out != "Creating jar group... Done.\n" {
+		t.Fatalf("create = %q", out)
+	}
+	if code, _, errOut := f.run(t, "", "jargroup", "create", "old", "http://dl.bukkit.org/craftbukkit.jar"); code != ExitError || !strings.Contains(errOut, "https") {
+		t.Fatalf("http target: %d %q", code, errOut)
+	}
+	out := f.mustRun(t, "jargroup", "getlatest", "paper")
+	if !strings.HasPrefix(out, "Downloading latest version... Done.\nSaved as \"") {
+		t.Fatalf("getlatest = %q", out)
+	}
+	if out := f.mustRun(t, "jargroup", "getlatest", "paper"); !strings.Contains(out, "was already up to date.") {
+		t.Fatalf("second getlatest = %q", out)
+	}
+	if out := f.mustRun(t, "jargroup", "list"); !strings.HasPrefix(out, "paper\n    20") {
+		t.Fatalf("list = %q", out)
+	}
+	if out := f.mustRun(t, "jargroup", "changeurl", "paper", srv.URL+"/other.jar"); out != "Changing target URL... Done.\n" {
+		t.Fatalf("changeurl = %q", out)
+	}
+
+	f.mustRun(t, "server", "create", "survival")
+	if out := f.mustRun(t, "survival", "jar", "paper"); !strings.Contains(out, "Server \"survival\" is now using \"") {
+		t.Fatalf("jar = %q", out)
+	}
+	if code, _, errOut := f.run(t, "", "survival", "jar", "paper", "nope.jar"); code != ExitError || !strings.Contains(errOut, `no jar named "nope.jar"`) {
+		t.Fatalf("missing file: %d %q", code, errOut)
+	}
+	if code, _, errOut := f.run(t, "", "nobody", "jar", "paper"); code != ExitError || !strings.Contains(errOut, "no server with the name") {
+		t.Fatalf("missing server: %d %q", code, errOut)
+	}
+
+	// Rename re-points the server; delete refuses while it is used.
+	out = f.mustRun(t, "jargroup", "rename", "paper", "paper2")
+	if !strings.HasPrefix(out, "Renamed jar group \"paper\" to \"paper2\".\nServer \"survival\" is now using \"") {
+		t.Fatalf("rename = %q", out)
+	}
+	if target, _ := os.Readlink(filepath.Join(f.root, "survival", "server.jar")); !strings.HasPrefix(target, filepath.Join(f.jars, "paper2")+"/") {
+		t.Fatalf("link after rename = %s", target)
+	}
+	f.terminal = true
+	if code, _, errOut := f.run(t, "y\n", "jargroup", "delete", "paper2"); code != ExitError || !strings.Contains(errOut, `server "survival"`) {
+		t.Fatalf("delete in use: %d %q", code, errOut)
+	}
+	os.Remove(filepath.Join(f.root, "survival", "server.jar"))
+	if code, out, _ := f.run(t, "n\n", "jargroup", "delete", "paper2"); code != ExitOK || !strings.HasSuffix(out, "Jar group was NOT deleted.\n") {
+		t.Fatalf("declined delete: %d %q", code, out)
+	}
+	f.terminal = false
+	if code, _, errOut := f.run(t, "y\n", "jargroup", "delete", "paper2"); code != ExitError || !strings.Contains(errOut, "--yes") {
+		t.Fatalf("noninteractive delete: %d %q", code, errOut)
+	}
+	if out := f.mustRun(t, "jargroup", "delete", "--yes", "paper2"); out != "Jar group deleted.\n" {
+		t.Fatalf("delete = %q", out)
+	}
+	if code, _, errOut := f.run(t, "", "jargroup", "delete", "--yes", "paper2"); code != ExitError || !strings.Contains(errOut, "no jar group") {
+		t.Fatalf("delete missing: %d %q", code, errOut)
 	}
 }

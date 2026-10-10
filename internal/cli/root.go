@@ -67,6 +67,6 @@ func newRootCommand(info buildinfo.Info, d deps) (*cobra.Command, error) {
 	o.register(root)
 	root.AddCommand(newVersionCommand(info), newServerCommand(d),
 		newGlobalCommand(d, lifecycle.VerbStart), newGlobalCommand(d, lifecycle.VerbStop),
-		newGlobalCommand(d, lifecycle.VerbRestart))
+		newGlobalCommand(d, lifecycle.VerbRestart), newJargroupCommand(d))
 	return root, nil
 }

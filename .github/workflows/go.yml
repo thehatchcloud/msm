@@ -95,7 +95,8 @@ jobs:
           fi
           smoke="$RUNNER_TEMP/msm-smoke"
           mkdir -p "$smoke/servers"
-          printf 'USERNAME="%s"\nDEFAULT_USERNAME="%s"\nSERVER_STORAGE_PATH="%s"\n' "$(id -un)" "$(id -un)" "$smoke/servers" > "$smoke/msm.conf"
+          mkdir -p "$smoke/jars"
+          printf 'USERNAME="%s"\nDEFAULT_USERNAME="%s"\nSERVER_STORAGE_PATH="%s"\nJAR_STORAGE_PATH="%s"\n' "$(id -un)" "$(id -un)" "$smoke/servers" "$smoke/jars" > "$smoke/msm.conf"
           export MSM_CONF="$smoke/msm.conf"
           "$RUNNER_TEMP/msm" server create smoke
           test -f "$smoke/servers/smoke/worldstorage/readme.txt"
@@ -116,7 +117,17 @@ jobs:
           export PATH="$(dirname "$MSM_TEST_SCREEN"):$PATH"
           "$RUNNER_TEMP/msm" server create live
           live="$smoke/servers/live"
-          printf 'PK\003\004' > "$live/server.jar"
+          # Select the server's JAR through a jar group, as an administrator
+          # with a locally built JAR would (no download in CI).
+          "$RUNNER_TEMP/msm" jargroup create custom minecraft
+          printf 'PK\003\004' > "$smoke/jars/custom/custom-build.jar"
+          "$RUNNER_TEMP/msm" live jar custom custom-build.jar | grep -F 'Server "live" is now using'
+          test -L "$live/server.jar"
+          "$RUNNER_TEMP/msm" jargroup list | grep -Fx custom
+          if "$RUNNER_TEMP/msm" jargroup create insecure http://example.com/x.jar; then
+            echo "An http jar group target was accepted"
+            exit 1
+          fi
           printf "msm-invocation='%s' '-test.run=^TestFakeMinecraft\$' fake-minecraft ok\nmsm-stop-delay=1\n" "$RUNNER_TEMP/fakemc" > "$live/server.properties"
           "$RUNNER_TEMP/msm" live start
           test -e "$live/active"

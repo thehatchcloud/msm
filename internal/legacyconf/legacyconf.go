@@ -173,6 +173,10 @@ type GlobalSettings struct {
 	ServerStoragePath    string
 	JarStoragePath       string
 	ServerPropertiesFile string
+	// JargroupTarget and JargroupDownloadDir name a JAR group's download
+	// target file and its temporary download directory.
+	JargroupTarget      string
+	JargroupDownloadDir string
 
 	// Warnings are non-fatal notes about the import, such as the
 	// SERVER_PROPERTIES/DEFAULT_PROPERTIES_PATH spelling conflict recorded
@@ -188,6 +192,8 @@ const (
 	DefaultServerStoragePath    = "/opt/msm/servers"
 	DefaultJarStoragePath       = "/opt/msm/jars"
 	DefaultServerPropertiesFile = "server.properties"
+	DefaultJargroupTarget       = "target.txt"
+	DefaultJargroupDownloadDir  = "downloads"
 )
 
 // Global extracts the settings this task owns from a parsed file, applying
@@ -202,6 +208,8 @@ func Global(f *File) GlobalSettings {
 		ServerStoragePath:    DefaultServerStoragePath,
 		JarStoragePath:       DefaultJarStoragePath,
 		ServerPropertiesFile: DefaultServerPropertiesFile,
+		JargroupTarget:       DefaultJargroupTarget,
+		JargroupDownloadDir:  DefaultJargroupDownloadDir,
 	}
 	if v, ok := f.Lookup("USERNAME"); ok {
 		settings.Username = v
@@ -211,6 +219,12 @@ func Global(f *File) GlobalSettings {
 	}
 	if v, ok := f.Lookup("JAR_STORAGE_PATH"); ok {
 		settings.JarStoragePath = v
+	}
+	if v, ok := f.Lookup("JARGROUP_TARGET"); ok {
+		settings.JargroupTarget = v
+	}
+	if v, ok := f.Lookup("JARGROUP_DOWNLOAD_DIR"); ok {
+		settings.JargroupDownloadDir = v
 	}
 
 	// SERVER_PROPERTIES is the setting init/msm actually registers and

@@ -125,6 +125,8 @@ been validated on every machine. P04 and P16 own that validation.
 - `internal/profiles`: the parts of the legacy version profiles that
   lifecycle needs (log path, log-line prefix, start event, save-all
   confirmation), as inert data; P08 extends it.
+- `internal/jars`: JAR groups (list, create, delete, rename, changeurl,
+  getlatest), verified downloads and a server's JAR selection.
 - `internal/lifecycle`: start, stop, restart and status for one server,
   every server (`all`) or the global set, with countdowns, deadlines and
   bounded bulk concurrency.
@@ -632,6 +634,97 @@ main flows against real GNU screen with this test binary as the server
 (`TestFakeMinecraft`), under the same `MSM_REQUIRE_SCREEN` rules as P04.
 Contract IDs are in the test comments: CT-CMD-001 to CT-CMD-005 and
 CT-CMD-020 to CT-CMD-025.
+
+## JAR groups (P07)
+
+`internal/jars` and `msm jargroup list|create|delete|rename|changeurl|getlatest`
+and `msm <server> jar <jargroup> [<file>]` manage the JAR store below
+`JAR_STORAGE_PATH` (`compatibility/commands.tsv` CMD-013 to CMD-018, CMD-036,
+CMD-037; SURF-011 to SURF-014, SURF-039). The store comes from the same
+`msm.conf` as the servers; rootless, it is the data directory's `jars`, made
+on demand. `JARGROUP_TARGET` (`target.txt`) and `JARGROUP_DOWNLOAD_DIR`
+(`downloads`) are read from `msm.conf`.
+
+### Layout and commands
+
+- A group is a directory holding its target file and JARs named
+  `YYYY-MM-DD-HH-MM-SS-<name>` (local time of the download). `list` prints
+  each group and, indented, those timestamped JARs, as `jargroup_list` does.
+  A JAR placed in a group by hand under any other name is not listed but can
+  be selected by name.
+- `create` validates the name like a server name and the target, and
+  publishes the group with its target file in one rename. `changeurl`
+  replaces the target file atomically and requires it to exist.
+- **Targets** (DEV-020): an https URL; `minecraft-snapshot`; or any other
+  word starting with `minecraft` (normally `minecraft`), meaning the newest
+  release. A plain http URL is refused when set, and an http target left by
+  the legacy manager fails at download time. A target file naming several
+  URLs is refused, as the legacy download of several files failed.
+- `delete` refuses a group that any server's `JAR_PATH` points into, naming
+  the servers; otherwise it asks the legacy question (`y`, `Y` or `yes`
+  deletes) or takes `--yes` when standard input is not a terminal. The group
+  leaves service in one rename and is then removed without following links.
+- `rename` moves the group and re-points every server whose `JAR_PATH`
+  points into it at the same JAR under the new name (DEV-009). If any step
+  fails, the links already changed are restored and the group moved back.
+
+### Downloads
+
+`getlatest`, and `<server> jar <group>` without a file, download with Go's
+HTTP client: verified TLS (1.2 or later), https redirects only (at most
+10), a 30 s TLS handshake and 1 minute response-header timeout, 10 minutes
+for the whole download, and at most 512 MiB. `minecraft` targets read
+Mojang's version manifest (`version_manifest_v2.json`), pick the newest
+release or snapshot by release time (as the legacy `jq` filter did), check
+the version document's SHA-1 against the manifest, and check the server
+JAR's SHA-1 and size against the version document; the file is saved as
+`minecraft_server.<version>.jar`. URL targets are saved under the server's
+`Content-Disposition` file name, else the last element of the final URL,
+reduced to letters, digits, `.`, `_`, `+` and `-`, without directories or
+leading dots.
+
+Each download is written to a staging file in the group's download
+directory, synced, checked (hash and size when published, and the ZIP
+signature every JAR starts with), and only then renamed into the group. A
+failed, interrupted, oversized, unverified or non-JAR download therefore
+never adds or replaces a JAR, and staging files an interrupted run left are
+removed on the next download. A download identical to the group's newest
+JAR is discarded (`was already up to date`).
+
+### Selecting a server's JAR
+
+`msm <server> jar <group> <file>` points `JAR_PATH` at that file in the
+group; it must be a regular file there and a JAR. Without a file, the
+group's newest version is downloaded first and the newest timestamped JAR
+is used; if the download fails, the server keeps its current JAR. The link
+is replaced atomically, and only when `JAR_PATH` is missing or already a
+link: a JAR copied into the server by hand is never overwritten. The change
+takes effect at the server's next start. `msm all jar …` selects for every
+server in turn and reports each failure.
+
+### Locking and privileges
+
+Every store mutation and every selection holds the registry lock
+(`.msm-registry.lock` in the store); selection also holds the server's lock,
+always after the registry lock, so rename and delete never race a selection.
+As root, the manager locks and checks as root, then drops permanently to the
+store's user before changing anything (as for servers). Because that drop
+is to one user, root refuses to re-point, on rename, a server owned by
+another user, and to download-and-select for one; selecting an existing
+file drops to the server's owner instead. An unprivileged caller must be the
+store's user.
+
+External tools: none. Downloads no longer need `wget` or `jq`.
+
+### Tests
+
+`internal/jars` tests run against local `httptest` TLS servers: URL and
+`minecraft`/`minecraft-snapshot` downloads, redirects, a redirect to http,
+redirect loops, 404s, declared and streamed oversized bodies, a connection
+dropped mid-body, non-JAR content, a hostile `Content-Disposition` name, a
+tampered JAR, a version document that does not match the manifest, a size
+mismatch, rename rollback after an injected failure, deletes of groups in
+use, and concurrent creates. Contract IDs are in the test comments.
 
 ## GitHub Actions
 

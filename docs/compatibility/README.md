@@ -171,7 +171,7 @@ it does not claim that the command behavior itself has been ported.
 | Global stop intent | Does not remove active marker | Public global docs say intent is unchanged | Preserve |
 | Per-server stop intent | Removes active marker before stopping | Public server docs describe inactive state | Preserve |
 | `server delete` while running | Prompts, then stops and deletes | Help only says delete | Keep explicit prompt, add `--yes`; preview target; refuse a server not proven stopped (DEV-018, P05) |
-| `jargroup rename` | Does not update server JAR symlinks; source contains TODO | Help implies rename succeeds | P07 must update/refuse affected references atomically |
+| `jargroup rename` | Does not update server JAR symlinks; source contains TODO | Help implies rename succeeds | Rename re-points every server using the group, rolling back on failure; delete refuses a group in use (DEV-009, DEV-020, P07) |
 | Unknown command status | Prints a message and normally exits zero | No status documented | Return nonzero usage status |
 | Update transport | Downloads unverified files with TLS checks disabled | Described simply as update | Replace with verified release artifacts |
 | Current game syntax | Profiles stop at Minecraft 1.7-era parsing | Project description implies general Minecraft support | Retain legacy profiles and add an explicitly tested modern profile |

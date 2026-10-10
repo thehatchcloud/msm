@@ -184,7 +184,8 @@ func TestLegacyHelpAndNoSuchCommand(t *testing.T) {
 		}
 	}
 	for _, args := range [][]string{nil, {"survival"}, {"survival", "frobnicate"}, {"survival", "status", "now"},
-		{"stop", "later"}, {"start", "now"}, {"jargroup", "list"}} {
+		{"stop", "later"}, {"start", "now"}, {"jargroup"}, {"jargroup", "list", "extra"}, {"jargroup", "create", "x"},
+		{"survival", "jar"}, {"survival", "jar", "a", "b", "c"}} {
 		var out, errOut bytes.Buffer
 		if code := Run(args, nil, &out, &errOut, buildinfo.Current()); code != ExitError || out.Len() != 0 || errOut.String() != "No such command. See "+programPath(os.Args[0])+" help\n" {
 			t.Errorf("msm %v: exit %d stdout %q stderr %q", args, code, out.String(), errOut.String())
