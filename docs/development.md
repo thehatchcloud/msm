@@ -12,7 +12,7 @@ whether a server is running.
 
 ## Toolchain and dependencies
 
-Use the exact Go patch version in `go.mod`: Go 1.27.1 at this revision.
+Use the exact Go patch version in `go.mod`: Go 1.27.2 at this revision.
 It was selected from the [official Go downloads](https://go.dev/dl/).
 CI sets `GOTOOLCHAIN=local` and installs that version using `actions/setup-go`,
 so it cannot silently upgrade the compiler. All CI actions are pinned to commit
