@@ -1,4 +1,4 @@
-package lifecycle
+package logwatch
 
 import (
 	"os"
@@ -22,9 +22,9 @@ func TestLogWatcher(t *testing.T) {
 		f.WriteString(text)
 		f.Close()
 	}
-	poll := func(w *logWatcher) bool {
+	poll := func(w *Watcher) bool {
 		t.Helper()
-		ok, err := w.poll(done)
+		ok, err := w.Poll(done)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -32,7 +32,7 @@ func TestLogWatcher(t *testing.T) {
 	}
 
 	// No log yet, then a log appears.
-	w, err := watchLog(path)
+	w, err := Watch(path)
 	if err != nil || poll(w) {
 		t.Fatal("matched before any log", err)
 	}
@@ -40,10 +40,10 @@ func TestLogWatcher(t *testing.T) {
 	if !poll(w) {
 		t.Fatal("a log created after the mark is fresh")
 	}
-	w.close()
+	w.Close()
 
 	// Appended: only lines after the mark count, even split across polls.
-	w, _ = watchLog(path)
+	w, _ = Watch(path)
 	if poll(w) {
 		t.Fatal("old line matched")
 	}
@@ -55,10 +55,10 @@ func TestLogWatcher(t *testing.T) {
 	if !poll(w) {
 		t.Fatal("completed fresh line not matched")
 	}
-	w.close()
+	w.Close()
 
 	// Replaced by rename, as Minecraft 1.7+ does at startup.
-	w, _ = watchLog(path)
+	w, _ = Watch(path)
 	next := filepath.Join(dir, "next.log")
 	os.WriteFile(next, []byte("[3] Done replaced\n"), 0o644)
 	if err := os.Rename(next, path); err != nil {
@@ -67,36 +67,36 @@ func TestLogWatcher(t *testing.T) {
 	if !poll(w) {
 		t.Fatal("replacement log not read from the start")
 	}
-	w.close()
+	w.Close()
 
 	// Truncated and rewritten in place.
-	w, _ = watchLog(path)
+	w, _ = Watch(path)
 	write(os.O_TRUNC, "[4] Done rewritten\n")
 	if !poll(w) {
 		t.Fatal("rewritten log not read from the start")
 	}
-	w.close()
+	w.Close()
 
 	// An over-long line is skipped, and the next line still matches;
-	// failure hints are kept.
-	w, _ = watchLog(path)
+	// failure Hints are kept.
+	w, _ = Watch(path)
 	write(os.O_APPEND, strings.Repeat("x", maxLogLine+10)+" Done\n[5] **** FAILED TO BIND TO PORT!\n")
 	if poll(w) {
 		t.Fatal("over-long line matched")
 	}
 	write(os.O_APPEND, "[6] Done\n")
-	if !poll(w) || len(w.hints) != 1 || !strings.Contains(w.hints[0], "FAILED TO BIND") {
-		t.Fatalf("hints %q", w.hints)
+	if !poll(w) || len(w.Hints) != 1 || !strings.Contains(w.Hints[0], "FAILED TO BIND") {
+		t.Fatalf("Hints %q", w.Hints)
 	}
-	w.close()
+	w.Close()
 
 	// A FIFO in place of the log is refused, never blocked on.
 	os.Remove(path)
 	if err := syscall.Mkfifo(path, 0o644); err != nil {
 		t.Skip("mkfifo:", err)
 	}
-	w, _ = watchLog(path)
-	if _, err := w.poll(done); err == nil {
+	w, _ = Watch(path)
+	if _, err := w.Poll(done); err == nil {
 		t.Fatal("FIFO log accepted")
 	}
 }

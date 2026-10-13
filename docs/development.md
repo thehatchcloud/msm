@@ -3,8 +3,10 @@
 This is an alpha, not a production manager. The Go executable supports
 `help`, `--help`, `-h`, `version`, `--version`, Cobra-generated `completion`,
 and the P05 instance commands `server list`, `server create`, `server rename`
-and `server delete` (see [Server instances](#server-instances-p05)). Every
-other management command returns a nonzero error. Viper reads the small native
+and `server delete` (see [Server instances](#server-instances-p05)), the P06
+lifecycle commands, the P07 JAR commands and the P08 console and player
+commands (see [Console and player commands](#console-and-player-commands-p08)).
+Every other management command returns a nonzero error. Viper reads the small native
 configuration schema described below. No Go command runs the legacy manager or
 launches Minecraft; the screen backend (P04) is a library that later lifecycle
 and console tasks will call, and that `server` commands use only to check
@@ -725,6 +727,77 @@ dropped mid-body, non-JAR content, a hostile `Content-Disposition` name, a
 tampered JAR, a version document that does not match the manifest, a size
 mismatch, rename rollback after an injected failure, deletes of groups in
 use, and concurrent creates. Contract IDs are in the test comments.
+
+## Console and player commands (P08)
+
+`internal/console` and `msm <server> connected|console|whitelist|wl|blacklist|bl|
+operator|op|gamemode|gm|kick|say|time|toggledownfall|tdf|give|xp|save|cmd|cmdlog`
+send commands to a running server's console and report its answer
+(`compatibility/commands.tsv` CMD-026, CMD-038, CMD-042 to CMD-069). `msm all
+<command>` reaches every running server in name order; `console` and `cmdlog`
+need one server. External tools: GNU screen only.
+
+### Profiles
+
+`internal/profiles` holds, as inert data, what each command types and what
+answers it, for the five shipped `versioning/*.sh` profiles (a test parses
+those files and requires the Go data to equal them, apart from DEV-022) and
+the `minecraft/1.13.0` profile for current servers (DEV-023). `VERSION` picks
+the newest profile not newer than it; an unset or unknown `VERSION` is
+`minecraft/1.7.0`, as before, and a `VERSION` that names no profile warns on
+standard error. Each command lists its answers in the profile's order; the
+first *n* confirm it and the rest refuse it. `CONFIRM_*` settings are
+registered by the legacy manager but were never read, and are ignored here.
+
+Support is as follows. Every legacy profile is covered by recorded-line tests
+of the profile's own patterns. The modern profile is covered by vanilla
+language-file wording and Paper's `[12:00:00 INFO]:` prefix, not by a live
+server yet; P16 adds native Java runs. `craftbukkit/1.13+`, Forge and other
+servers with different log formats need their own profile or `cmd`.
+
+### Sending and answering
+
+A command is typed as one line (DEV-014), under the server's lock. Its answer
+is read from the server log (`internal/logwatch`, shared with lifecycle): only
+lines written after the send count, in a log that is replaced or truncated
+mid-wait too. A matching refusal is an error; an unanswered command, after
+5 s, is an error saying it may still have taken effect; a refusal-only
+profile entry (such as `gamemode` in 1.3) waits one second and then reports
+"not confirmed". Several players are handled one after another: a refusal does
+not stop the rest, an unanswered command does. Nothing is sent unless every
+step is valid for the server's version. Minecraft assigns no request IDs, so a
+player triggering the same message at the same moment is indistinguishable;
+holding the lock prevents this manager from causing it.
+
+`whitelist on|off` on a stopped server sets `white-list` in `server.properties`
+instead (the file's other lines are untouched), as the legacy manager did.
+The other commands, and `save`, refuse a stopped server. `connected` on a
+stopped server says no one is connected; with screen missing it fails, since
+that cannot be known.
+
+### Lists
+
+`whitelist list`, `operator list` and `blacklist list` read the server's files
+(`WHITELIST_PATH`, `OPS_PATH`, `BANNED_PLAYERS_PATH`, `BANNED_IPS_PATH`)
+without writing them: JSON arrays (Minecraft 1.7.6 and later) and the older
+one-name-per-line text are both read; a half-written or oversized file is an
+error, never an empty list.
+
+### cmd, cmdlog and console
+
+`cmd` types the words joined with spaces. `cmdlog` does that and prints the
+last five log lines and then new ones until Ctrl+C, which stops only the
+follower: the lock is released after sending, and the server keeps running.
+`console` attaches the terminal with screen as the session's owner and first
+explains that Ctrl+A then D detaches, while Ctrl+C is typed into the server
+console and can stop it.
+
+### Tests
+
+`internal/console` tests use a fake session layer for log correlation (stale
+lines, forged chat, refusals, rotation, `all`, list formats, cmdlog) and, with
+GNU screen, run the commands against a real session, including the byte-exact
+`cmd` round trip of screen metacharacters.
 
 ## GitHub Actions
 

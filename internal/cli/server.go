@@ -15,6 +15,7 @@ import (
 
 	"github.com/thehatchcloud/msm/internal/clock"
 	"github.com/thehatchcloud/msm/internal/config"
+	"github.com/thehatchcloud/msm/internal/console"
 	"github.com/thehatchcloud/msm/internal/identity"
 	"github.com/thehatchcloud/msm/internal/jars"
 	"github.com/thehatchcloud/msm/internal/legacyconf"
@@ -35,6 +36,10 @@ type deps struct {
 	servers func(w io.Writer) (*servers.Manager, error)
 	// lifecycle builds the lifecycle manager over servers.
 	lifecycle func(w io.Writer, o lifecycleOptions) (*lifecycle.Manager, error)
+	// console builds the console manager over servers.
+	console func(w io.Writer, o lifecycleOptions) (*console.Manager, error)
+	// stdio is the terminal a console attach connects.
+	stdio func() process.Stdio
 	// jars builds the JAR store manager.
 	jars func(w io.Writer) (*jars.Manager, error)
 	// program is how the legacy messages name the executable ($0).
@@ -44,6 +49,8 @@ type deps struct {
 func defaultDeps() deps {
 	d := deps{isTerminal: readerIsTerminal, servers: hostServers, jars: hostJars, program: programPath(os.Args[0])}
 	d.lifecycle = hostLifecycle(d)
+	d.console = hostConsole(d)
+	d.stdio = hostStdio
 	return d
 }
 

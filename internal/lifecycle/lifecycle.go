@@ -33,6 +33,7 @@ import (
 	"github.com/thehatchcloud/msm/internal/filelock"
 	"github.com/thehatchcloud/msm/internal/identity"
 	"github.com/thehatchcloud/msm/internal/legacyconf"
+	"github.com/thehatchcloud/msm/internal/logwatch"
 	"github.com/thehatchcloud/msm/internal/profiles"
 	"github.com/thehatchcloud/msm/internal/screen"
 	"github.com/thehatchcloud/msm/internal/servers"
@@ -156,7 +157,7 @@ func (m *Manager) prepare(s *legacyconf.ServerSettings, out io.Writer) (*server,
 		screen: s.Get("SCREEN_NAME"), out: out}
 	var note string
 	srv.profile, note = profiles.Select(s.Get("VERSION"))
-	_ = note // the fallback is the legacy default; P08 reports it
+	_ = note // the fallback is the legacy default; internal/console reports it
 	srv.argv, srv.argvErr = s.Invocation()
 	srv.sessions, err = m.cfg.Sessions(owner)
 	if err != nil && !errors.Is(err, ErrNoScreen) {
@@ -362,18 +363,18 @@ func (m *Manager) launch(ctx context.Context, s *server) error {
 	if err != nil {
 		return err
 	}
-	log, err := watchLog(s.settings.Get("LOG_PATH"))
+	log, err := logwatch.Watch(s.settings.Get("LOG_PATH"))
 	if err != nil {
 		return err
 	}
-	defer log.close()
+	defer log.Close()
 
 	s.printf("Starting server %q...", s.name)
 	_, err = s.sessions.Launch(ctx, screen.LaunchSpec{Name: s.screen, Dir: s.dir, Argv: s.argv, Timeout: launchTimeout})
 	if err == nil {
 		timeout := m.readyTimeout(s)
 		_, err = s.sessions.WaitReady(ctx, s.screen, s.argv, timeout, func(context.Context) (bool, error) {
-			return log.poll(ready)
+			return log.Poll(ready)
 		})
 		if errors.Is(err, screen.ErrReadyTimeout) {
 			return fmt.Errorf("%w: server %q is running but did not log its start line within %s; it was left running (see %s)",
@@ -400,15 +401,15 @@ func (m *Manager) launch(ctx context.Context, s *server) error {
 }
 
 // diagnose explains a server that stopped during startup.
-func (s *server) diagnose(log *logWatcher) error {
-	_, _ = log.poll(nil)
+func (s *server) diagnose(log *logwatch.Watcher) error {
+	_, _ = log.Poll(nil)
 	eula := eulaRejected(s.dir)
 	port := ""
-	for _, h := range log.hints {
+	for _, h := range log.Hints {
 		switch {
-		case eulaHint.MatchString(h):
+		case logwatch.EULAHint.MatchString(h):
 			eula = true
-		case portHint.MatchString(h):
+		case logwatch.PortHint.MatchString(h):
 			port = h
 		}
 	}
@@ -497,22 +498,22 @@ func (m *Manager) halt(ctx context.Context, s *server, st screen.Status) error {
 // as server_save_all does. An unconfirmed save is reported, not fatal:
 // Minecraft's stop command saves the worlds too.
 func (m *Manager) saveAll(ctx context.Context, s *server, st screen.Status) error {
-	cmd := s.profile.SaveAll
-	confirm, err := s.profile.Match(cmd.Confirm)
+	cmd := s.profile.SaveAllCommand()
+	confirm, err := s.profile.Match(cmd.Confirm())
 	if err != nil {
 		return err
 	}
-	log, err := watchLog(s.settings.Get("LOG_PATH"))
+	log, err := logwatch.Watch(s.settings.Get("LOG_PATH"))
 	if err != nil {
 		return err
 	}
-	defer log.close()
+	defer log.Close()
 	if err := s.sessions.Send(ctx, st, cmd.Line); err != nil {
 		return fmt.Errorf("save server %q: %w", s.name, err)
 	}
 	deadline := m.cfg.Clock.Now().Add(cmd.Timeout)
 	for {
-		ok, err := log.poll(confirm)
+		ok, err := log.Poll(confirm)
 		if err != nil {
 			return fmt.Errorf("save server %q: %w", s.name, err)
 		}
