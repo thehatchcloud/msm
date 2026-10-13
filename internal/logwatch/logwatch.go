@@ -1,4 +1,7 @@
-package lifecycle
+// Package logwatch reads the lines a server writes to its console log after
+// a mark was taken, so output that predates a command (or a start) can never
+// be mistaken for its result (DEV-010).
+package logwatch
 
 import (
 	"bytes"
@@ -21,17 +24,17 @@ const (
 
 // Log lines that explain why a server stopped during startup.
 var (
-	eulaHint     = regexp.MustCompile(`(?i)you need to agree to the eula`)
-	portHint     = regexp.MustCompile(`(?i)failed to bind to port|address already in use`)
-	failureHints = regexp.MustCompile(eulaHint.String() + "|" + portHint.String())
+	EULAHint     = regexp.MustCompile(`(?i)you need to agree to the eula`)
+	PortHint     = regexp.MustCompile(`(?i)failed to bind to port|address already in use`)
+	failureHints = regexp.MustCompile(EULAHint.String() + "|" + PortHint.String())
 )
 
-// logWatcher reads only the lines a server writes to its console log after
+// Watcher reads only the lines a server writes to its console log after
 // the watcher was made, so an old start or save line from an earlier run
 // can never confirm a new one (DEV-010). A log that is replaced (Minecraft
 // 1.7+ moves latest.log aside at startup) or truncated is read from its
 // beginning; one that is appended to is read from where it ended.
-type logWatcher struct {
+type Watcher struct {
 	path     string
 	base     os.FileInfo // the log when the watcher was made; nil if none
 	baseSize int64
@@ -42,11 +45,12 @@ type logWatcher struct {
 	off     int64
 	partial []byte
 	skip    bool // discarding the rest of an over-long line
-	hints   []string
+	Hints   []string
 }
 
-func watchLog(path string) (*logWatcher, error) {
-	w := &logWatcher{path: path}
+// Watch marks the log's current end; Poll and Lines see only what follows.
+func Watch(path string) (*Watcher, error) {
+	w := &Watcher{path: path}
 	info, err := os.Stat(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -86,7 +90,7 @@ func readTail(path string, info os.FileInfo) ([]byte, error) {
 // continues reports whether f is the log the watcher started from, still
 // holding what it held then, so only what follows baseSize is new. Any
 // other file, or the same inode rewritten, is read from its beginning.
-func (w *logWatcher) continues(f *os.File, info os.FileInfo) bool {
+func (w *Watcher) continues(f *os.File, info os.FileInfo) bool {
 	if w.base == nil || !os.SameFile(w.base, info) || info.Size() < w.baseSize {
 		return false
 	}
@@ -100,7 +104,7 @@ func (w *logWatcher) continues(f *os.File, info os.FileInfo) bool {
 	return bytes.Equal(tail, w.baseTail)
 }
 
-func (w *logWatcher) close() {
+func (w *Watcher) Close() {
 	if w.f != nil {
 		w.f.Close()
 		w.f = nil
@@ -108,46 +112,63 @@ func (w *logWatcher) close() {
 }
 
 // poll reads the log's new lines and reports whether one matches re (nil
-// matches nothing; the lines are still read for hints).
-func (w *logWatcher) poll(re *regexp.Regexp) (bool, error) {
+// matches nothing; the lines are still read for Hints).
+func (w *Watcher) Poll(re *regexp.Regexp) (bool, error) {
+	lines, err := w.Lines()
+	if err != nil {
+		return false, err
+	}
+	if re != nil {
+		for _, l := range lines {
+			if re.MatchString(l) {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// Lines reads the complete lines written since the last call (or since
+// Watch), without their line terminators.
+func (w *Watcher) Lines() ([]string, error) {
 	cur, err := os.Stat(w.path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
+		return nil, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("inspect log %s: %w", w.path, err)
+		return nil, fmt.Errorf("inspect log %s: %w", w.path, err)
 	}
 	if !cur.Mode().IsRegular() {
-		return false, fmt.Errorf("log %s is not a regular file", w.path)
+		return nil, fmt.Errorf("log %s is not a regular file", w.path)
 	}
 	if w.f == nil || !os.SameFile(w.info, cur) {
 		if err := w.open(cur); err != nil || w.f == nil {
-			return false, err
+			return nil, err
 		}
 	}
 	info, err := w.f.Stat()
 	if err != nil {
-		return false, fmt.Errorf("inspect log %s: %w", w.path, err)
+		return nil, fmt.Errorf("inspect log %s: %w", w.path, err)
 	}
 	if info.Size() < w.off {
 		w.off, w.partial, w.skip = 0, nil, false
 	}
 	n := min(info.Size()-w.off, maxLogRead)
 	if n <= 0 {
-		return false, nil
+		return nil, nil
 	}
 	buf := make([]byte, n)
 	read, err := w.f.ReadAt(buf, w.off)
 	if err != nil && !errors.Is(err, io.EOF) {
-		return false, fmt.Errorf("read log %s: %w", w.path, err)
+		return nil, fmt.Errorf("read log %s: %w", w.path, err)
 	}
 	w.off += int64(read)
-	return w.scan(buf[:read], re), nil
+	return w.scan(buf[:read]), nil
 }
 
 // open starts reading a log file that is not the one open before.
-func (w *logWatcher) open(cur os.FileInfo) error {
-	w.close()
+func (w *Watcher) open(cur os.FileInfo) error {
+	w.Close()
 	// O_NONBLOCK: a FIFO swapped in after the check must not block open.
 	f, err := os.OpenFile(w.path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -169,8 +190,8 @@ func (w *logWatcher) open(cur os.FileInfo) error {
 	return nil
 }
 
-func (w *logWatcher) scan(data []byte, re *regexp.Regexp) bool {
-	matched := false
+func (w *Watcher) scan(data []byte) []string {
+	var lines []string
 	for len(data) > 0 {
 		i := bytes.IndexByte(data, '\n')
 		if i < 0 {
@@ -180,7 +201,7 @@ func (w *logWatcher) scan(data []byte, re *regexp.Regexp) bool {
 					w.partial, w.skip = nil, true
 				}
 			}
-			return matched
+			return lines
 		}
 		line := append(w.partial, data[:i]...)
 		data = data[i+1:]
@@ -194,14 +215,12 @@ func (w *logWatcher) scan(data []byte, re *regexp.Regexp) bool {
 		}
 		text := string(bytes.TrimRight(line, "\r"))
 		if failureHints.MatchString(text) {
-			w.hints = append(w.hints, text)
-			if len(w.hints) > maxHints {
-				w.hints = w.hints[1:]
+			w.Hints = append(w.Hints, text)
+			if len(w.Hints) > maxHints {
+				w.Hints = w.Hints[1:]
 			}
 		}
-		if re != nil && re.MatchString(text) {
-			matched = true
-		}
+		lines = append(lines, text)
 	}
-	return matched
+	return lines
 }

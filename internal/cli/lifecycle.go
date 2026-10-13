@@ -26,7 +26,7 @@ type lifecycleOptions struct {
 
 func (o *lifecycleOptions) register(cmd *cobra.Command) {
 	cmd.Flags().DurationVar(&o.timeout, "timeout", 0,
-		"how long to wait for a server to start or stop (default 5m, or longer if its version profile says so)")
+		"how long to wait for a server to start or stop, or for a console command to be answered (defaults: 5m, or longer if its version profile says so; 5s)")
 	cmd.Flags().IntVar(&o.jobs, "jobs", lifecycle.DefaultJobs, "how many servers a command for several servers handles at once")
 }
 
@@ -40,36 +40,53 @@ func (o *lifecycleOptions) validate() error {
 	return nil
 }
 
-// hostLifecycle runs servers through the host's GNU screen. The screen
-// version is checked once per server owner before it is used.
+// hostScreens opens the host's GNU screen for a server owner. The screen
+// version is checked once per owner before it is used. It fails with
+// ErrNoScreen when screen is not installed.
+func hostScreens() func(identity.Identity) (*screen.Backend, error) {
+	p := hostProber()
+	var mu sync.Mutex
+	checked := map[int]error{}
+	return func(owner identity.Identity) (*screen.Backend, error) {
+		if p.Screen == "" {
+			return nil, errNoScreen
+		}
+		b, err := screen.New(screen.Config{Screen: p.Screen, Owner: owner, Env: p.Env,
+			Runner: p.Runner, Terminal: p.Terminal, Processes: p.Processes, Clock: p.Clock})
+		if err != nil {
+			return nil, err
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		versionErr, ok := checked[owner.UID]
+		if !ok {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			_, versionErr = b.Version(ctx)
+			cancel()
+			checked[owner.UID] = versionErr
+		}
+		return b, versionErr
+	}
+}
+
+// errNoScreen is reported when screen is missing; each manager maps it to
+// its own sentinel.
+var errNoScreen = errors.New("screen is not installed")
+
+// hostLifecycle runs servers through the host's GNU screen.
 func hostLifecycle(d deps) func(io.Writer, lifecycleOptions) (*lifecycle.Manager, error) {
 	return func(w io.Writer, o lifecycleOptions) (*lifecycle.Manager, error) {
 		m, err := d.servers(w)
 		if err != nil {
 			return nil, err
 		}
-		p := hostProber()
-		var mu sync.Mutex
-		checked := map[int]error{}
+		screens := hostScreens()
 		sessions := func(owner identity.Identity) (lifecycle.Sessions, error) {
-			if p.Screen == "" {
+			b, err := screens(owner)
+			if errors.Is(err, errNoScreen) {
 				return nil, lifecycle.ErrNoScreen
 			}
-			b, err := screen.New(screen.Config{Screen: p.Screen, Owner: owner, Env: p.Env,
-				Runner: p.Runner, Terminal: p.Terminal, Processes: p.Processes, Clock: p.Clock})
-			if err != nil {
-				return nil, err
-			}
-			mu.Lock()
-			defer mu.Unlock()
-			versionErr, ok := checked[owner.UID]
-			if !ok {
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				_, versionErr = b.Version(ctx)
-				cancel()
-				checked[owner.UID] = versionErr
-			}
-			return b, versionErr
+			return b, err
 		}
 		return lifecycle.New(lifecycle.Config{Servers: m, Sessions: sessions, Path: os.Getenv("PATH"),
 			Clock: clock.Real{}, Timeout: o.timeout, Jobs: o.jobs})
@@ -142,7 +159,8 @@ var serverVerbs = map[string]lifecycle.Verb{
 
 // runServerCommand is the server-first grammar the root command accepts:
 // msm <server> start|stop [now]|restart [now]|status, with "all" as the
-// server applying the per-server command to every server. P14 extends
+// server applying the per-server command to every server; the console and
+// player commands (console.go) and jar. P09, P10, P12, P13 and P14 extend
 // this dispatcher to the remaining server commands.
 func runServerCommand(cmd *cobra.Command, d deps, o lifecycleOptions, args []string) error {
 	// Anything that matches no command gets the legacy answer, as
@@ -153,6 +171,9 @@ func runServerCommand(cmd *cobra.Command, d deps, o lifecycleOptions, args []str
 	target, word := args[0], args[1]
 	if word == "jar" {
 		return runJarCommand(cmd, d, target, args[2:])
+	}
+	if handled, err := runConsoleCommand(cmd, d, o, target, word, args[2:]); handled {
+		return err
 	}
 	verb, ok := serverVerbs[word]
 	if !ok {

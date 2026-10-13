@@ -13,10 +13,12 @@ import (
 
 	"github.com/thehatchcloud/msm/internal/buildinfo"
 	"github.com/thehatchcloud/msm/internal/clock"
+	"github.com/thehatchcloud/msm/internal/console"
 	"github.com/thehatchcloud/msm/internal/identity"
 	"github.com/thehatchcloud/msm/internal/jars"
 	"github.com/thehatchcloud/msm/internal/legacyconf"
 	"github.com/thehatchcloud/msm/internal/lifecycle"
+	"github.com/thehatchcloud/msm/internal/process"
 	"github.com/thehatchcloud/msm/internal/servers"
 )
 
@@ -85,6 +87,15 @@ func (f *serverFixture) run(t *testing.T, stdin string, args ...string) (int, st
 		}
 		return lifecycle.New(lifecycle.Config{Servers: m, Clock: clock.Real{}, Timeout: o.timeout, Jobs: o.jobs,
 			Sessions: func(identity.Identity) (lifecycle.Sessions, error) { return nil, lifecycle.ErrNoScreen }})
+	}
+	d.stdio = func() process.Stdio { return process.Stdio{} }
+	d.console = func(w io.Writer, o lifecycleOptions) (*console.Manager, error) {
+		m, err := d.servers(w)
+		if err != nil {
+			return nil, err
+		}
+		return console.New(console.Config{Servers: m, Clock: clock.Real{}, Timeout: o.timeout,
+			Sessions: func(identity.Identity) (console.Sessions, error) { return nil, console.ErrNoScreen }})
 	}
 	d.jars = func(w io.Writer) (*jars.Manager, error) {
 		cfg, js, err := hostConfig(w)

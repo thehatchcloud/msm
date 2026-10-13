@@ -115,6 +115,9 @@ func New(cfg Config) (*Manager, error) {
 // Root is the storage root this manager manages.
 func (m *Manager) Root() string { return m.cfg.Root }
 
+// PropertiesFile is the name of the properties file in each server directory.
+func (m *Manager) PropertiesFile() string { return m.cfg.PropertiesFile }
+
 // Entry is one server in a listing.
 type Entry struct {
 	Name   string
