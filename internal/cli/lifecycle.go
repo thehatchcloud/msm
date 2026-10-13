@@ -151,6 +151,9 @@ func runServerCommand(cmd *cobra.Command, d deps, o lifecycleOptions, args []str
 		return errNoSuchCommand
 	}
 	target, word := args[0], args[1]
+	if word == "jar" {
+		return runJarCommand(cmd, d, target, args[2:])
+	}
 	verb, ok := serverVerbs[word]
 	if !ok {
 		return errNoSuchCommand

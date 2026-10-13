@@ -173,6 +173,26 @@ func (m *Manager) List(ctx context.Context) ([]Entry, []string, error) {
 	return entries, warnings, nil
 }
 
+// Names lists the servers below the root, sorted, without checking whether
+// they are running: the entries List reports as servers.
+func (m *Manager) Names() ([]string, error) {
+	dirents, err := os.ReadDir(m.cfg.Root)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("servers: list %s: %w", m.cfg.Root, err)
+	}
+	var names []string
+	for _, d := range dirents {
+		if d.IsDir() && safepath.ValidateName(d.Name()) == nil {
+			names = append(names, d.Name())
+		}
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
 // Settings resolves an existing server's effective settings.
 func (m *Manager) Settings(name string) (*legacyconf.ServerSettings, error) {
 	dir, err := m.existing(name)

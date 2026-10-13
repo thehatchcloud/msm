@@ -16,6 +16,7 @@ import (
 	"github.com/thehatchcloud/msm/internal/clock"
 	"github.com/thehatchcloud/msm/internal/config"
 	"github.com/thehatchcloud/msm/internal/identity"
+	"github.com/thehatchcloud/msm/internal/jars"
 	"github.com/thehatchcloud/msm/internal/legacyconf"
 	"github.com/thehatchcloud/msm/internal/lifecycle"
 	"github.com/thehatchcloud/msm/internal/process"
@@ -34,12 +35,14 @@ type deps struct {
 	servers func(w io.Writer) (*servers.Manager, error)
 	// lifecycle builds the lifecycle manager over servers.
 	lifecycle func(w io.Writer, o lifecycleOptions) (*lifecycle.Manager, error)
+	// jars builds the JAR store manager.
+	jars func(w io.Writer) (*jars.Manager, error)
 	// program is how the legacy messages name the executable ($0).
 	program string
 }
 
 func defaultDeps() deps {
-	d := deps{isTerminal: readerIsTerminal, servers: hostServers, program: programPath(os.Args[0])}
+	d := deps{isTerminal: readerIsTerminal, servers: hostServers, jars: hostJars, program: programPath(os.Args[0])}
 	d.lifecycle = hostLifecycle(d)
 	return d
 }
@@ -53,7 +56,7 @@ func readerIsTerminal(r io.Reader) bool {
 // (MSM_CONF, else /etc/msm.conf) when there is one, otherwise the default
 // layout, which is rootless for an unprivileged user.
 func hostServers(w io.Writer) (*servers.Manager, error) {
-	cfg, err := hostConfig(w)
+	cfg, _, err := hostConfig(w)
 	if err != nil {
 		return nil, err
 	}
@@ -61,13 +64,20 @@ func hostServers(w io.Writer) (*servers.Manager, error) {
 	return servers.New(cfg)
 }
 
-func hostConfig(w io.Writer) (servers.Config, error) {
+// jarStore is where the host keeps JAR groups.
+type jarStore struct {
+	root, target, downloadDir string
+	createRoot                bool
+}
+
+func hostConfig(w io.Writer) (servers.Config, jarStore, error) {
 	cfg := servers.Config{PropertiesFile: legacyconf.DefaultServerPropertiesFile}
+	js := jarStore{target: legacyconf.DefaultJargroupTarget, downloadDir: legacyconf.DefaultJargroupDownloadDir}
 	euid := os.Geteuid()
 	if path, ok := legacyconf.Discover("", os.Getenv("MSM_CONF"), systemMSMConf); ok {
 		f, err := legacyconf.Load(path)
 		if err != nil {
-			return cfg, err
+			return cfg, js, err
 		}
 		g := legacyconf.Global(f)
 		for _, warning := range g.Warnings {
@@ -75,29 +85,45 @@ func hostConfig(w io.Writer) (servers.Config, error) {
 		}
 		owner, err := identity.Lookup(g.Username)
 		if err != nil {
-			return cfg, fmt.Errorf("manager user USERNAME=%s from %s: %w", g.Username, path, err)
+			return cfg, js, fmt.Errorf("manager user USERNAME=%s from %s: %w", g.Username, path, err)
 		}
 		cfg.Root, cfg.PropertiesFile, cfg.Global, cfg.Owner = g.ServerStoragePath, g.ServerPropertiesFile, f, owner
+		js.root, js.target, js.downloadDir = g.JarStoragePath, g.JargroupTarget, g.JargroupDownloadDir
 	} else {
 		roots, err := config.ResolveDataRoots(nil, euid)
 		if err != nil {
-			return cfg, err
+			return cfg, js, err
 		}
-		cfg.Root = roots.ServerStoragePath
+		cfg.Root, js.root = roots.ServerStoragePath, roots.JarStoragePath
 		if euid == 0 {
 			if cfg.Owner, err = identity.Lookup(legacyconf.DefaultUsername); err != nil {
-				return cfg, fmt.Errorf("default manager user: %w", err)
+				return cfg, js, fmt.Errorf("default manager user: %w", err)
 			}
 		} else {
 			if cfg.Owner, err = identity.Current(); err != nil {
-				return cfg, err
+				return cfg, js, err
 			}
 			// Rootless: servers without a configured owner are the
-			// invoking user's, in a data directory made on demand.
-			cfg.DefaultOwner, cfg.CreateRoot = &cfg.Owner, true
+			// invoking user's, in data directories made on demand.
+			cfg.DefaultOwner, cfg.CreateRoot, js.createRoot = &cfg.Owner, true, true
 		}
 	}
-	return cfg, nil
+	return cfg, js, nil
+}
+
+// hostJars configures the JAR store from the same host configuration.
+func hostJars(w io.Writer) (*jars.Manager, error) {
+	cfg, js, err := hostConfig(w)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Prober = hostProber()
+	sm, err := servers.New(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return jars.New(jars.Config{Root: js.root, Target: js.target, DownloadDir: js.downloadDir,
+		Owner: cfg.Owner, Servers: sm, CreateRoot: js.createRoot, Clock: clock.Real{}})
 }
 
 func hostProber() servers.ScreenProber {
@@ -279,7 +305,9 @@ server is refused: stop it first.`,
 				return fmt.Errorf("server %q is %s (%s); stop it before deleting it", p.Name, p.State.Kind, p.State.Detail)
 			}
 			if !yes {
-				ok, err := confirm(cmd, d, p.Name)
+				ok, err := confirm(cmd, d, fmt.Sprintf("server %q", p.Name),
+					fmt.Sprintf("Are you sure you want to delete server %q and its worlds? (note: backups are preserved) [y/N]: ", p.Name),
+					"Server was NOT deleted.")
 				if err != nil || !ok {
 					return err
 				}
@@ -328,20 +356,21 @@ func humanBytes(n int64) string {
 // waiting on a pipe or treating end-of-input as an answer.
 var errNeedsConfirmation = errors.New("standard input is not a terminal; pass --yes to confirm")
 
-// confirm asks the legacy question on a terminal. Anything but y, Y or yes
-// declines, which is not an error.
-func confirm(cmd *cobra.Command, d deps, name string) (bool, error) {
+// confirm asks a legacy delete question on a terminal; what names the
+// thing for the refusal ("server %q"). Anything but y, Y or yes declines,
+// which is not an error: the declined line is printed instead.
+func confirm(cmd *cobra.Command, d deps, what, question, declined string) (bool, error) {
 	in := cmd.InOrStdin()
 	if !d.isTerminal(in) {
-		return false, fmt.Errorf("refusing to delete server %q without confirmation: %w", name, errNeedsConfirmation)
+		return false, fmt.Errorf("refusing to delete %s without confirmation: %w", what, errNeedsConfirmation)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Are you sure you want to delete server %q and its worlds? (note: backups are preserved) [y/N]: ", name)
+	fmt.Fprint(cmd.OutOrStdout(), question)
 	answer, err := bufio.NewReader(in).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return false, fmt.Errorf("read confirmation: %w", err)
 	}
 	if !confirmAnswer.MatchString(strings.TrimRight(answer, "\r\n")) {
-		_, err := fmt.Fprintln(cmd.OutOrStdout(), "Server was NOT deleted.")
+		_, err := fmt.Fprintln(cmd.OutOrStdout(), declined)
 		return false, err
 	}
 	return true, nil
