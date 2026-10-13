@@ -123,7 +123,12 @@ func (f *fakeScreen) Run(ctx context.Context, cmd process.Command) (process.Resu
 		case behaveOK, behaveHang:
 			// Minecraft 1.7+ moves the old latest.log aside at startup.
 			os.Remove(filepath.Join(cmd.Dir, "logs", "latest.log"))
-			appendLog(cmd.Dir, doneLine)
+			// A real start line carries the startup time, so no two launches
+			// write identical logs. Identical bytes in a replaced file of the
+			// same size, inode and (on a coarse-timestamp file system) mtime
+			// are indistinguishable from the old log, which is not a case a
+			// real server produces.
+			appendLog(cmd.Dir, fmt.Sprintf(`[12:00:00] [Server thread/INFO]: Done (%d.0s)! For help, type "help"`, f.launches[name]))
 		case behaveEULA:
 			os.WriteFile(filepath.Join(cmd.Dir, "eula.txt"), []byte("eula=false\n"), 0o644)
 			appendLog(cmd.Dir, "[12:00:00] [main/INFO]: You need to agree to the EULA in order to run the server. Go to eula.txt for more info.")
