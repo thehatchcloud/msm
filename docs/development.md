@@ -4,8 +4,9 @@ This is an alpha, not a production manager. The Go executable supports
 `help`, `--help`, `-h`, `version`, `--version`, Cobra-generated `completion`,
 and the P05 instance commands `server list`, `server create`, `server rename`
 and `server delete` (see [Server instances](#server-instances-p05)), the P06
-lifecycle commands, the P07 JAR commands and the P08 console and player
-commands (see [Console and player commands](#console-and-player-commands-p08)).
+lifecycle commands, the P07 JAR commands, the P08 console and player
+commands (see [Console and player commands](#console-and-player-commands-p08))
+and the P09 world commands `worlds list|load|on|off` (see [Worlds](#worlds-p09)).
 Every other management command returns a nonzero error. Viper reads the small native
 configuration schema described below. No Go command runs the legacy manager or
 launches Minecraft; the screen backend (P04) is a library that later lifecycle
@@ -798,6 +799,105 @@ console and can stop it.
 lines, forged chat, refusals, rotation, `all`, list formats, cmdlog) and, with
 GNU screen, run the commands against a real session, including the byte-exact
 `cmd` round trip of screen metacharacters.
+
+## Worlds (P09)
+
+`internal/worlds` and `msm <server> worlds list|load|on <world>|off <world>`
+manage a server's worlds (`compatibility/commands.tsv` CMD-027, CMD-028,
+CMD-032, CMD-033; SURF-006 to SURF-008). `worlds ram`, `todisk` and `backup`
+arrive with P12 and P10 and are "No such command" until then.
+
+```text
+msm <server> worlds list        list the worlds, active and inactive
+msm <server> worlds load        link the active worlds into the server directory
+msm <server> worlds on <world>  move an inactive world into active storage
+msm <server> worlds off <world> move an active world into inactive storage
+msm all worlds list|load        every server, in name order
+msm all worlds on|off all       every world of every server
+```
+
+### Layout
+
+A server keeps worlds in `WORLD_STORAGE_PATH` (default `worldstorage`,
+active) and `WORLD_STORAGE_INACTIVE_PATH` (default `worldstorage_inactive`),
+each possibly overridden per server and possibly outside the server
+directory. They must differ, must not contain one another and must not be the
+server directory. A world is a real directory in one of them; a file, a
+symbolic link, a hidden directory or a name with control characters is
+ignored and reported on stderr, so a link planted in storage never makes the
+manager touch its target. A storage directory that is itself a symbolic link
+(for example to another disk) is followed. Active worlds are linked into the
+server directory under their own names, the links Minecraft finds; inactive
+worlds are not linked, and are the ones world-only backups skip (P10).
+
+### Commands
+
+- **List** prints one line per world, sorted, `RAM  name` when the world holds
+  the `WORLDS_FLAG_INRAM` file and five spaces otherwise, as the legacy
+  command does, or `There are no worlds in worldstorage.` It reads only, and
+  works whatever the server is doing.
+- **Load** and start. `worlds load` and `msm <server> start` run the same
+  reconciliation (the legacy `server_ensure_links`): an active world's link is
+  created, or replaced if it points elsewhere, and the link of an inactive
+  world is removed; a name that is already a real file or directory is
+  reported as `Could not link world` and left alone, the other worlds are
+  still linked, and `worlds load` then exits nonzero (start continues, as it
+  did, with the report). If the properties name a `level-name`,
+  `active-storage/<level-name>` is created so a new world is generated in
+  storage, unless that world already exists in the server directory or in
+  inactive storage. Links are changed through a descriptor for the server
+  directory opened without following a symbolic link, each new link is made
+  under a temporary name, handed to the owner and renamed into place, so
+  root cannot be redirected by the server's owner and a failure leaves the old
+  link.
+- **RAM.** A world flagged for RAM links to `RAMDISK_STORAGE_PATH/<server>/<world>`
+  only when `msm.conf` sets `RAMDISK_STORAGE_ENABLED=true` and the copy
+  exists; otherwise to disk, with a warning. Creating and synchronizing the
+  copy is P12.
+- **On and off** move the whole world directory (with its `DIM-1`/`DIM1`
+  dimensions) between the storage directories. Nothing is replaced: if the
+  name is taken in the destination, the command fails with the world still
+  where it was. Within one filesystem it is a single `rename(2)`. Across
+  filesystems the world is copied (links kept as links, modes and times
+  kept, special files refused) to a hidden `.msm-world-<name>-<random>`
+  directory beside the destination, published with one rename, and the
+  original is then renamed aside and removed, so an interruption leaves the
+  world intact at its source. If the original cannot be retired the copy is
+  removed again; if even that fails the error names both places. A leftover
+  that could not be removed is reported by `worlds list`. Deactivating also
+  removes the world's own link from the server directory, but not a link
+  that points anywhere else, and is refused while the world has a copy in
+  RAM that may hold newer data. A world that exists in both directories is
+  ambiguous and is refused.
+- **All.** `msm all worlds list|load` runs every server, one at a time in
+  name order, with each line prefixed by the server's name; every server is
+  attempted and a failure is reported once at the end. `msm all worlds
+  on|off` needs `all` as the world (`when specifying "all" servers, "all"
+  worlds must be specified also`); it moves every world that is not already
+  there. `msm <server> worlds on all` is "there is no world with the name
+  \"all\"", as before.
+
+### Safety policy (DEV-024)
+
+Every change first takes the server's lock and proves the server is stopped
+(running, occupied or unknown refuse), so a link or world never changes under
+a live server. As root, `on` and `off` drop permanently to the server's owner
+before moving anything, and a root process that has dropped to one user refuses
+a server owned by another; `load` and start do not drop (start must keep
+running screen) and use the descriptor-relative calls above instead. An
+unprivileged caller must be the server's owner.
+
+External tools: none.
+
+### Tests
+
+`internal/worlds` tests cover multiple worlds with dimension directories,
+per-server path overrides, planted links, RAM resolution, conflicts, the
+stopped-server policy, `all`, privileges, and an injected failure at every
+filesystem step of a move and of a link change. Contract IDs are in the test
+comments: CT-CMD-027, CT-CMD-028, CT-CMD-032, CT-CMD-033, CT-SURF-006 to
+CT-SURF-008. `TestStartLinksWorlds` (`internal/lifecycle`) checks the start
+integration and `TestWorldsCommands` (`internal/cli`) the grammar.
 
 ## GitHub Actions
 

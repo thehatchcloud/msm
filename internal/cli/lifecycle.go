@@ -88,8 +88,12 @@ func hostLifecycle(d deps) func(io.Writer, lifecycleOptions) (*lifecycle.Manager
 			}
 			return b, err
 		}
+		wm, err := d.worlds(w)
+		if err != nil {
+			return nil, err
+		}
 		return lifecycle.New(lifecycle.Config{Servers: m, Sessions: sessions, Path: os.Getenv("PATH"),
-			Clock: clock.Real{}, Timeout: o.timeout, Jobs: o.jobs})
+			Clock: clock.Real{}, Timeout: o.timeout, Jobs: o.jobs, Worlds: wm})
 	}
 }
 
@@ -171,6 +175,9 @@ func runServerCommand(cmd *cobra.Command, d deps, o lifecycleOptions, args []str
 	target, word := args[0], args[1]
 	if word == "jar" {
 		return runJarCommand(cmd, d, target, args[2:])
+	}
+	if word == "worlds" {
+		return runWorldsCommand(cmd, d, target, args[2:])
 	}
 	if handled, err := runConsoleCommand(cmd, d, o, target, word, args[2:]); handled {
 		return err

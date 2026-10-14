@@ -89,6 +89,8 @@ type Manager struct {
 	dropTo  func(identity.Identity) error
 	ops     fsOps
 	dropped bool
+	// droppedTo is the UID a root process dropped to.
+	droppedTo int
 }
 
 // New validates cfg and returns a Manager.
@@ -337,13 +339,19 @@ func (m *Manager) actAs() error {
 
 // drop gives up root, once, before the first filesystem mutation.
 func (m *Manager) drop() error {
-	if m.euid != 0 || m.dropped || m.cfg.Owner.UID == 0 {
+	if m.euid != 0 || m.cfg.Owner.UID == 0 {
+		return nil
+	}
+	if m.dropped {
+		if m.droppedTo != m.cfg.Owner.UID {
+			return fmt.Errorf("%w: this process already dropped root privileges to another user", identity.ErrPrivilegeRequired)
+		}
 		return nil
 	}
 	if err := m.dropTo(m.cfg.Owner); err != nil {
 		return fmt.Errorf("servers: drop privileges to %s: %w", m.cfg.Owner.Username, err)
 	}
-	m.dropped = true
+	m.dropped, m.droppedTo = true, m.cfg.Owner.UID
 	return nil
 }
 

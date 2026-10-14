@@ -17,6 +17,7 @@ import (
 	"github.com/thehatchcloud/msm/internal/process"
 	"github.com/thehatchcloud/msm/internal/screen"
 	"github.com/thehatchcloud/msm/internal/servers"
+	"github.com/thehatchcloud/msm/internal/worlds"
 )
 
 // Server behaviors the fake screen simulates.
@@ -263,6 +264,8 @@ type env struct {
 	noScrn  bool
 	timeout time.Duration
 	jobs    int
+	// linkWorlds makes start link a server's worlds, as the CLI does.
+	linkWorlds bool
 }
 
 func newEnv(t *testing.T) *env {
@@ -292,8 +295,15 @@ func newEnv(t *testing.T) *env {
 func (e *env) manager() *Manager {
 	e.t.Helper()
 	euid := os.Geteuid()
+	var wm *worlds.Manager
+	if e.linkWorlds {
+		var err error
+		if wm, err = worlds.New(worlds.Config{Servers: e.servers}); err != nil {
+			e.t.Fatal(err)
+		}
+	}
 	m, err := New(Config{
-		Servers: e.servers, Path: e.path, Clock: e.clock, Timeout: e.timeout, Jobs: e.jobs, EUID: &euid,
+		Servers: e.servers, Path: e.path, Clock: e.clock, Timeout: e.timeout, Jobs: e.jobs, EUID: &euid, Worlds: wm,
 		Sessions: func(owner identity.Identity) (Sessions, error) {
 			if e.noScrn {
 				return nil, ErrNoScreen
