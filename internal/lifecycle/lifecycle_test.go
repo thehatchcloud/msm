@@ -341,3 +341,55 @@ func TestExitMessageIgnoresTiming(t *testing.T) {
 		t.Fatalf("messages differ:\n%s\n%s", messages[0], messages[1])
 	}
 }
+
+// Starting a server links its active worlds into the server directory before
+// launch, leaves a world that cannot be linked out without stopping the
+// start, and links nothing when the start is refused.
+func TestStartLinksWorlds(t *testing.T) {
+	e := newEnv(t)
+	e.linkWorlds = true
+	dir := e.server("a", behaveOK, "level-name=fresh\n")
+	storage := filepath.Join(dir, "worldstorage")
+	for _, w := range []string{"main", "plugins"} {
+		if err := os.MkdirAll(filepath.Join(storage, w), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// "plugins" collides with a real directory of the server.
+	if err := os.MkdirAll(filepath.Join(dir, "plugins"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if err := e.manager().Start(bg, "a", &out); err != nil {
+		t.Fatalf("start: %v\n%s", err, out.String())
+	}
+	if got, err := os.Readlink(filepath.Join(dir, "main")); err != nil || got != filepath.Join(storage, "main") {
+		t.Errorf("main link = %q, %v", got, err)
+	}
+	if info, err := os.Lstat(filepath.Join(storage, "fresh")); err != nil || !info.IsDir() {
+		t.Errorf("level-name directory missing: %v", err)
+	}
+	if info, err := os.Lstat(filepath.Join(dir, "plugins")); err != nil || !info.IsDir() {
+		t.Errorf("a real directory must not be replaced: %v", err)
+	}
+	for _, want := range []string{"Maintaining world symbolic links...", `Could not link world "plugins"`, `Server "a" started.`} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+
+	// A start that is refused before launch changes no links.
+	e2 := newEnv(t)
+	e2.linkWorlds = true
+	e2.noScrn = true
+	dir2 := e2.server("b", behaveOK, "")
+	if err := os.MkdirAll(filepath.Join(dir2, "worldstorage", "main"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := e2.manager().Start(bg, "b", &out); err == nil {
+		t.Fatal("start without screen should fail")
+	}
+	if _, err := os.Lstat(filepath.Join(dir2, "main")); err == nil {
+		t.Error("a refused start must not link worlds")
+	}
+}

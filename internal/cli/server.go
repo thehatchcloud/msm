@@ -23,6 +23,7 @@ import (
 	"github.com/thehatchcloud/msm/internal/process"
 	"github.com/thehatchcloud/msm/internal/screen"
 	"github.com/thehatchcloud/msm/internal/servers"
+	"github.com/thehatchcloud/msm/internal/worlds"
 )
 
 // systemMSMConf is the legacy global configuration file.
@@ -42,12 +43,15 @@ type deps struct {
 	stdio func() process.Stdio
 	// jars builds the JAR store manager.
 	jars func(w io.Writer) (*jars.Manager, error)
+	// worlds builds the world manager over servers.
+	worlds func(w io.Writer) (*worlds.Manager, error)
 	// program is how the legacy messages name the executable ($0).
 	program string
 }
 
 func defaultDeps() deps {
 	d := deps{isTerminal: readerIsTerminal, servers: hostServers, jars: hostJars, program: programPath(os.Args[0])}
+	d.worlds = hostWorlds(d)
 	d.lifecycle = hostLifecycle(d)
 	d.console = hostConsole(d)
 	d.stdio = hostStdio

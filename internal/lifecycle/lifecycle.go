@@ -37,6 +37,7 @@ import (
 	"github.com/thehatchcloud/msm/internal/profiles"
 	"github.com/thehatchcloud/msm/internal/screen"
 	"github.com/thehatchcloud/msm/internal/servers"
+	"github.com/thehatchcloud/msm/internal/worlds"
 )
 
 var (
@@ -94,6 +95,9 @@ type Config struct {
 	Jobs int
 	// EUID is the effective user ID; nil means ask the OS.
 	EUID *int
+	// Worlds, when set, links a server's active worlds into its directory
+	// just before the server is launched, as the legacy start did.
+	Worlds *worlds.Manager
 }
 
 // Manager runs lifecycle operations.
@@ -362,6 +366,13 @@ func (m *Manager) launch(ctx context.Context, s *server) error {
 	ready, err := s.profile.Match(s.profile.Start.Pattern)
 	if err != nil {
 		return err
+	}
+	if m.cfg.Worlds != nil {
+		// A world that cannot be linked is reported and skipped, as before;
+		// only a failure to change the links at all stops the start.
+		if _, err := m.cfg.Worlds.EnsureLinks(ctx, s.settings, worlds.Output{Out: s.out, Err: s.out}); err != nil {
+			return fmt.Errorf("cannot start server %q: %w", s.name, err)
+		}
 	}
 	log, err := logwatch.Watch(s.settings.Get("LOG_PATH"))
 	if err != nil {
