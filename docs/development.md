@@ -7,7 +7,8 @@ and `server delete` (see [Server instances](#server-instances-p05)), the P06
 lifecycle commands, the P07 JAR commands, the P08 console and player
 commands (see [Console and player commands](#console-and-player-commands-p08))
 the P09 world commands `worlds list|load|on|off` (see [Worlds](#worlds-p09)) and
-the P10 backup commands `worlds backup` and `backup` (see [Backups](#backups-p10)).
+the P10 backup commands `worlds backup` and `backup`, which P11 extends with
+hard-link snapshots and rdiff-backup (see [Backups](#backups-p10)).
 Every other management command returns a nonzero error. Viper reads the small native
 configuration schema described below. No Go command runs the legacy manager or
 launches Minecraft; the screen backend (P04) is a library that later lifecycle
@@ -904,7 +905,9 @@ integration and `TestWorldsCommands` (`internal/cli`) the grammar.
 
 `internal/backup`, `msm <server> worlds backup` and `msm <server> backup`
 (CMD-031, CMD-035; SURF-015 to SURF-017) make ZIP backups with Go's
-`archive/zip`. No external tool is run; `zip` is not needed.
+`archive/zip`. ZIP backups run no external tool; `zip` is not needed. The
+optional P11 methods are described in [Other backup methods
+(P11)](#other-backup-methods-p11).
 
 ```text
 msm <server> worlds backup     one archive per active world
@@ -982,8 +985,9 @@ server.
   OOM kill. The next `worlds backup` or `backup` of that server takes the
   lock (which proves the old process is gone), reads the marker, sends
   `save-on` first if the server runs and saving may be off, and removes
-  `.msm-backup-staging-*` directories and `.msm-backup-*.partial` files below
-  the server's archive directories. The marker supplies only the fact that
+  `.msm-backup-staging-*` directories, `.msm-backup-*.partial` files and
+  `.msm-backup-snapshot-*.partial` directories below the server's archive,
+  rsync and rdiff-backup directories. The marker supplies only the fact that
   saving may be off; what is deleted is found from the configured archive
   directories, never from paths in the marker, which the server's owner can
   edit. There is no separate recovery command, and no restore command: restore
@@ -993,8 +997,10 @@ server.
   name, which cannot replace an existing archive. A full disk (`ENOSPC`), a
   permission error, a timeout, cancellation or a killed process therefore
   never leave a file named `*.zip` that is incomplete, and the partial file is
-  removed or swept by the next backup. If one of several world archives fails,
-  the ones already published are complete and the error lists them.
+  removed or swept by the next backup. If one of several world archives (or
+  methods) fails, the ones already published are complete and the error lists
+  them. The sweep also removes partial snapshots below the rsync and rdiff-backup
+  directories, matching only the exact names the manager creates.
 * The archive directory, the staging directory, the marker and the server lock
   file are never archived, even when the archive directory is inside what is
   being archived (including through a followed link).
@@ -1010,12 +1016,113 @@ normally points); `--allow-external-links` accepts the list after review. A
 link that leads back to a directory already being archived is a cycle and is
 refused. Sockets, pipes and devices are skipped with a warning.
 
-### Unsupported configuration
+### Other backup methods (P11)
 
-`RDIFF_BACKUP_ENABLED=true` or `RSYNC_BACKUP_ENABLED=true` makes `worlds
-backup` fail before anything is touched, naming the setting; those methods
-arrive with P11. So does `WORLD_ARCHIVE_ENABLED` other than `true`, and a
-server with no active world. A relative archive path is an invalid setting.
+`worlds backup` makes every method that is enabled, for every active world, in
+the legacy order (ZIP, rdiff-backup, hard-link snapshot), with the same save,
+staging, marker and recovery steps as a ZIP backup. A running server is saved
+and copied once, saving is turned back on, and then every method reads the
+staged copy, so they all hold the same state. `backup` (the complete backup) is
+ZIP only, as it was. At least one method must be enabled: `WORLD_ARCHIVE_ENABLED`,
+`RDIFF_BACKUP_ENABLED` and `RSYNC_BACKUP_ENABLED` must each be `true` or
+`false` (anything else is an invalid setting, not "off"), and all three `false`
+is an error (DEV-026, DEV-029). Each method has its own directory, and
+directories that are the same or inside one another are refused.
+
+External programs (the dependency matrix for backups):
+
+| Method | Settings | Runs | Needed when |
+| --- | --- | --- | --- |
+| ZIP | `WORLD_ARCHIVE_ENABLED`, `WORLD_ARCHIVE_PATH` | nothing | never |
+| Hard-link snapshots | `RSYNC_BACKUP_ENABLED`, `WORLD_RSYNC_PATH` | nothing (Go; the `rsync` program is not used) | never |
+| rdiff-backup | `RDIFF_BACKUP_ENABLED`, `WORLD_RDIFF_PATH`, `RDIFF_BACKUP_ROTATION`, `RDIFF_BACKUP_NICE` | `rdiff-backup`, and `nice` unless `RDIFF_BACKUP_NICE=0` | only when enabled |
+
+The manager's source is Go, but `rdiff-backup` is not: it is a separate Python
+program with librsync that this binary does not embed, reimplement or replace.
+A missing or unusable program fails only a backup that enables the method, before
+the server is touched, with the setting to change and how to install it
+(`apt install rdiff-backup`, `brew install rdiff-backup`). If a deployment must
+have no non-Go helpers, it cannot enable rdiff-backup; no other archive format
+stands in for it, and none is described as rdiff compatible (DEV-028).
+
+#### Hard-link snapshots (`RSYNC_BACKUP_ENABLED`)
+
+This is the Go form of `rsync -aH --link-dest=<dir>/latest <world> <dir>/<timestamp>`.
+Whether exact rsync semantics need the external utility was decided, not
+assumed: the legacy command only copies a tree and hard-links unchanged files
+to the previous copy, and a world holds regular files, directories and (rarely)
+links, which Go does fully; the differences are in DEV-027.
+
+```text
+WORLD_RSYNC_PATH/<server>/<world>/<YYYY-MM-DD-HH-MM-SS>/<world>/...   a complete copy
+WORLD_RSYNC_PATH/<server>/<world>/latest -> <YYYY-MM-DD-HH-MM-SS>     the newest snapshot
+```
+
+A file is hard-linked to the snapshot `latest` names when it has the same size,
+permission bits and modification time (to the nanosecond), and is otherwise
+copied to a new file. Permission bits and times of files and directories, and
+links (stored as links, never followed), are kept. An older snapshot is never
+changed through a shared inode: a linked file is never opened for writing,
+chmod-ed or touched, and a changed file is a new inode, so editing or deleting
+a snapshot never alters another. If the filesystem refuses links (`EXDEV`, as
+when the previous snapshot is on another filesystem, `EPERM`, `ENOTSUP`) the
+rest of the snapshot is copied and a warning says so; a file with too many
+links (`EMLINK`) is copied alone. `latest` is believed only when it is a link to
+a plain name that is a directory holding this world; otherwise everything is
+copied and a warning says why. On a filesystem that keeps whole seconds the
+copies never compare equal, so files are copied instead of linked, which costs
+space but is never wrong.
+
+A snapshot is built in `.msm-backup-snapshot-<random>.partial`, checked against
+the plan (every entry present, with the right kind and size), and published by
+a rename that cannot replace an existing snapshot (`renameat2`
+`RENAME_NOREPLACE` on Linux, `RENAME_EXCL` on macOS; a second snapshot in the
+same second gets `-1`, `-2`...). `latest` is then replaced atomically, so
+there is never a moment without it. Failure, cancellation or a kill leaves no
+published snapshot and does not move `latest`; the next backup removes the
+partial directory. The macOS rename (`RENAME_EXCL`) compiles but has not been
+run; P16 owns native macOS evidence.
+
+#### rdiff-backup (`RDIFF_BACKUP_ENABLED`)
+
+```text
+WORLD_RDIFF_PATH/<server>/<world>     an rdiff-backup repository
+RDIFF_BACKUP_ROTATION                 days of increments to keep (1 to 36500, default 7)
+RDIFF_BACKUP_NICE                     -20 to 19, default 19; negative values need root
+```
+
+The adapter runs the program directly with an argument vector, never through a
+shell: `nice -n <N> rdiff-backup ...`, in the repository directory, with
+absolute paths. It asks `rdiff-backup --version` first and uses the command line
+that version has: the legacy one (`rdiff-backup <src> <repo>`, then
+`--remove-older-than <N>D --force <repo>`) for 1.x to 2.1, and the actions
+(`backup`, `--force remove increments --older-than <N>D`, `list increments`)
+from 2.2, which deprecates the legacy line, and for 3.x, which drops it. Versions
+older than 1.0 and output that is not a version are refused. Only 2.2.6
+was run against. The legacy line is the one the legacy manager used, and the
+choice of 2.2 as the first version to use actions, and the 3.x line, are
+inferred from 2.2.6's behavior and not run; they are tested only with a
+stand-in (P16 owns running other versions).
+
+* The repository is the unchanged rdiff-backup format. One made by the legacy
+  manager is read and extended: before the server is touched, a non-empty
+  directory with no `rdiff-backup-data` is refused (rdiff-backup would refuse
+  it), and an existing repository is listed with the installed version, which
+  must succeed. This catches an unreadable or incompatible repository, not
+  corruption inside it; run `rdiff-backup verify` for that, as it reads every
+  file.
+* A stopped server's world is backed up in place; a running server's from the
+  staged copy, whose permission bits and times are restored first because
+  rdiff-backup records them. A repository inside the world is refused.
+* An interrupted rdiff-backup is regressed by the program itself on its next
+  run; the manager adds no recovery for it. Run time counts against
+  `--backup-timeout`, which stops the program.
+* Retention runs after a successful backup. `remove increments` exits with
+  status 2 when no increment is old enough yet (a young repository, for the
+  first `RDIFF_BACKUP_ROTATION` days); that one case, recognized by the status
+  and its message, is not a failure. Any other failure of either step is an
+  error naming the step; a backup made but not pruned says so.
+* rdiff-backup refuses to run twice in one second.
 
 ### Privileges
 
@@ -1034,6 +1141,24 @@ timeout, recovery after a killed manager and with a corrupt or hostile
 marker, `ENOSPC` and permission errors (stopped and live) leaving no archive,
 no overwrite, refusals, RAM worlds and a restore into a fresh directory
 compared with the original (a test helper, not a command).
+
+The P11 tests cover the snapshots (first copy with modes, times, empty and
+read-only directories and stored links; unchanged files shared by inode while
+changed, re-moded, added and removed files are not, and an older snapshot
+untouched in content, mode, time and name; link failures from another
+filesystem, no hard-link support and too many links; a world on another
+filesystem; an untrusted `latest`; failure, cancellation and a file that
+changes while copied leaving nothing and not moving `latest`; same-second
+names; a directory called `latest`; sweeping), the settings (flags,
+retention, priority, overlapping directories, nothing enabled), the adapter
+(missing program and `nice`, each version's command line, an unreadable
+version, a repository that is not one or cannot be read, a failing backup or
+retention, the exit-2 case), all methods together and in order, and a running
+server whose rsync and rdiff-backup runs read the staged copy after saving
+resumed. `TestRealRdiffBackup` runs the real rdiff-backup (skipped when none
+works, as on CI runners without it) against a repository made with the legacy
+command line, then a second and a running-server backup, `list increments` and
+`verify`. rsync is never run by any test.
 
 `TestWorldEditSnapshotAcceptance` runs WorldEdit's own
 `FileSystemSnapshotDatabase` and archive/date helpers (unmodified source,
