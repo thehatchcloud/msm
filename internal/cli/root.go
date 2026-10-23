@@ -65,6 +65,9 @@ func newRootCommand(info buildinfo.Info, d deps) (*cobra.Command, error) {
 		return nil, fmt.Errorf("bind debug flag: %w", err)
 	}
 	o.register(root)
+	root.Flags().DurationVar(&o.backupTimeout, "backup-timeout", 0, "how long compressing a backup may take (default 2h)")
+	root.Flags().BoolVar(&o.allowExternalLinks, "allow-external-links", false,
+		"let a complete backup with COMPLETE_BACKUP_FOLLOW_SYMLINKS=true include link targets outside the server, after you have reviewed the list it prints")
 	root.AddCommand(newVersionCommand(info), newServerCommand(d),
 		newGlobalCommand(d, lifecycle.VerbStart), newGlobalCommand(d, lifecycle.VerbStop),
 		newGlobalCommand(d, lifecycle.VerbRestart), newJargroupCommand(d))

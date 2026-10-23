@@ -614,3 +614,57 @@ func TestForAll(t *testing.T) {
 }
 
 func mkfifo(path string) error { return unix.Mkfifo(path, 0o644) }
+
+// DoLocked and Running are for a caller that already holds the server's
+// lock (a backup): they must not take it again, and must confirm the save
+// commands a backup depends on from the log.
+func TestDoLockedUnderHeldLock(t *testing.T) {
+	e := newEnv(t)
+	dir := e.server("alpha", modernProps, true)
+	e.sessions.responder = func(d, line string) {
+		modernResponder(d, line)
+		switch line {
+		case "save-off":
+			appendLog(d, "logs/latest.log", modernTag+"Turned off world auto-saving")
+		case "save-on":
+			appendLog(d, "logs/latest.log", modernTag+"Turned on world auto-saving")
+		}
+	}
+	lock, set, err := e.servers.LockServer("alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+	done := make(chan error, 1)
+	go func() {
+		var out, errOut bytes.Buffer
+		o := Output{Out: &out, Err: &errOut}
+		m := e.manager()
+		running, err := m.Running(context.Background(), set, o)
+		if err == nil && !running {
+			err = errors.New("a running server was reported stopped")
+		}
+		if err == nil {
+			err = m.DoLocked(context.Background(), set, []Step{{Command: profiles.SaveOff}, {Command: profiles.SaveAll, Sync: true}, {Command: profiles.SaveOn}}, o)
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("err %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("DoLocked blocked on the lock its caller holds")
+	}
+	if got := strings.Join(e.sessions.lines(), ","); got != "save-off,save-all,save-on" {
+		t.Errorf("sent %s", got)
+	}
+	_ = dir
+
+	delete(e.sessions.running, "msm-alpha")
+	var out, errOut bytes.Buffer
+	if running, err := e.manager().Running(context.Background(), set, Output{Out: &out, Err: &errOut}); err != nil || running {
+		t.Errorf("stopped server: running=%v err=%v", running, err)
+	}
+}

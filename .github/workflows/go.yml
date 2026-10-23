@@ -55,6 +55,14 @@ jobs:
         run: |
           echo "MSM_REQUIRE_SCREEN=1" >> "$GITHUB_ENV"
           "$MSM_TEST_SCREEN" -v || true
+      # The backup acceptance test runs WorldEdit's own snapshot lookup over
+      # the archives. The harness fetches pinned WorldEdit sources and
+      # checksummed Guava/JSR-305 jars; Linux runners ship a JDK.
+      - name: Build WorldEdit snapshot harness (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          compatibility/worldedit/build.sh "$RUNNER_TEMP/worldedit"
+          echo "MSM_WORLDEDIT_HARNESS=$RUNNER_TEMP/worldedit" >> "$GITHUB_ENV"
       - name: Check formatting
         run: |
           files="$(gofmt -l .)"
