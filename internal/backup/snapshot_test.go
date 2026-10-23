@@ -42,6 +42,17 @@ func snapWorld(t *testing.T, root string) string {
 	return w
 }
 
+// snapDir makes the directory snapshots are published in. A snapshot keeps
+// the world's read-only directories, which an unprivileged user cannot
+// remove until they are made writable, so the test's cleanup does that first.
+func snapDir(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { makeRemovable(dir) })
+}
+
 func planOf(t *testing.T, w string) []entry {
 	t.Helper()
 	p, err := buildPlan(w, filepath.Base(w), policy{})
@@ -97,7 +108,7 @@ func TestSnapshotFirst(t *testing.T) {
 	root := t.TempDir()
 	w := snapWorld(t, filepath.Join(root, "src"))
 	dir := filepath.Join(root, "snapshots")
-	os.MkdirAll(dir, 0o700)
+	snapDir(t, dir)
 	st := snap(t, osOps{}, dir, w, t1)
 
 	want := filepath.Join(dir, "2026-01-02-03-04-05")
@@ -146,7 +157,7 @@ func TestSnapshotSharesUnchangedFiles(t *testing.T) {
 	root := t.TempDir()
 	w := snapWorld(t, filepath.Join(root, "src"))
 	dir := filepath.Join(root, "snapshots")
-	os.MkdirAll(dir, 0o700)
+	snapDir(t, dir)
 	first := snap(t, osOps{}, dir, w, t1)
 
 	type before struct {
@@ -241,7 +252,7 @@ func TestSnapshotLinkFallbacks(t *testing.T) {
 			root := t.TempDir()
 			w := snapWorld(t, filepath.Join(root, "src"))
 			dir := filepath.Join(root, "snapshots")
-			os.MkdirAll(dir, 0o700)
+			snapDir(t, dir)
 			snap(t, osOps{}, dir, w, t1)
 			attempts := 0
 			st := snap(t, faultOps{link: func(o, n string) error { attempts++; return tc.err }}, dir, w, t1.Add(time.Hour))
@@ -277,7 +288,7 @@ func TestSnapshotSourceOnAnotherFilesystem(t *testing.T) {
 	t.Cleanup(func() { makeRemovable(src); os.RemoveAll(src) })
 	w := snapWorld(t, src)
 	dir := filepath.Join(root, "snapshots")
-	os.MkdirAll(dir, 0o700)
+	snapDir(t, dir)
 	snap(t, osOps{}, dir, w, t1)
 	st := snap(t, osOps{}, dir, w, t1.Add(time.Hour))
 	if st.Linked != 4 || st.Copied != 0 {
@@ -308,7 +319,7 @@ func TestSnapshotIgnoresBadLatest(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "snapshots")
-			os.MkdirAll(dir, 0o700)
+			snapDir(t, dir)
 			setup(dir)
 			st, err := writeSnapshot(context.Background(), osOps{}, dir, "alpha", t1, planOf(t, w))
 			if err != nil {
@@ -332,7 +343,7 @@ func TestSnapshotFailureLeavesNothing(t *testing.T) {
 	root := t.TempDir()
 	w := snapWorld(t, filepath.Join(root, "src"))
 	dir := filepath.Join(root, "snapshots")
-	os.MkdirAll(dir, 0o700)
+	snapDir(t, dir)
 	first := snap(t, osOps{}, dir, w, t1)
 	write(t, filepath.Join(w, "region", "r.0.0.mca"), "changed so it is copied", 0o640)
 
@@ -398,7 +409,7 @@ func TestSnapshotSameSecond(t *testing.T) {
 	root := t.TempDir()
 	w := snapWorld(t, filepath.Join(root, "src"))
 	dir := filepath.Join(root, "snapshots")
-	os.MkdirAll(dir, 0o700)
+	snapDir(t, dir)
 	a := snap(t, osOps{}, dir, w, t1)
 	write(t, filepath.Join(a.Path, "alpha", "marker"), "first", 0o644)
 	b := snap(t, osOps{}, dir, w, t1)
@@ -419,6 +430,7 @@ func TestSnapshotLatestIsDirectory(t *testing.T) {
 	root := t.TempDir()
 	w := snapWorld(t, filepath.Join(root, "src"))
 	dir := filepath.Join(root, "snapshots")
+	snapDir(t, dir)
 	os.MkdirAll(filepath.Join(dir, "latest", "keep"), 0o700)
 	st, err := writeSnapshot(context.Background(), osOps{}, dir, "alpha", t1, planOf(t, w))
 	if err == nil || !strings.Contains(err.Error(), "was not updated") {
