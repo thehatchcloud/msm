@@ -6,7 +6,8 @@ and the P05 instance commands `server list`, `server create`, `server rename`
 and `server delete` (see [Server instances](#server-instances-p05)), the P06
 lifecycle commands, the P07 JAR commands, the P08 console and player
 commands (see [Console and player commands](#console-and-player-commands-p08))
-and the P09 world commands `worlds list|load|on|off` (see [Worlds](#worlds-p09)).
+the P09 world commands `worlds list|load|on|off` (see [Worlds](#worlds-p09)) and
+the P10 backup commands `worlds backup` and `backup` (see [Backups](#backups-p10)).
 Every other management command returns a nonzero error. Viper reads the small native
 configuration schema described below. No Go command runs the legacy manager or
 launches Minecraft; the screen backend (P04) is a library that later lifecycle
@@ -804,8 +805,8 @@ GNU screen, run the commands against a real session, including the byte-exact
 
 `internal/worlds` and `msm <server> worlds list|load|on <world>|off <world>`
 manage a server's worlds (`compatibility/commands.tsv` CMD-027, CMD-028,
-CMD-032, CMD-033; SURF-006 to SURF-008). `worlds ram`, `todisk` and `backup`
-arrive with P12 and P10 and are "No such command" until then.
+CMD-032, CMD-033; SURF-006 to SURF-008). `worlds ram` and `todisk` arrive with
+P12 and are "No such command" until then; `worlds backup` is [P10](#backups-p10).
 
 ```text
 msm <server> worlds list        list the worlds, active and inactive
@@ -898,6 +899,153 @@ filesystem step of a move and of a link change. Contract IDs are in the test
 comments: CT-CMD-027, CT-CMD-028, CT-CMD-032, CT-CMD-033, CT-SURF-006 to
 CT-SURF-008. `TestStartLinksWorlds` (`internal/lifecycle`) checks the start
 integration and `TestWorldsCommands` (`internal/cli`) the grammar.
+
+## Backups (P10)
+
+`internal/backup`, `msm <server> worlds backup` and `msm <server> backup`
+(CMD-031, CMD-035; SURF-015 to SURF-017) make ZIP backups with Go's
+`archive/zip`. No external tool is run; `zip` is not needed.
+
+```text
+msm <server> worlds backup     one archive per active world
+msm <server> backup            the whole server directory
+msm all worlds backup|backup   every server, in name order
+    --backup-timeout 2h        limit on compressing (default 2h)
+    --timeout 5s               how long each console answer is awaited
+    --allow-external-links     see "Following links" below
+```
+
+### Layout
+
+```text
+WORLD_ARCHIVE_PATH/<server>/<world>/<YYYY-MM-DD-HH-MM-SS>.zip   holds <world>/...
+BACKUP_ARCHIVE_PATH/<server>/<YYYY-MM-DD-HH-MM-SS>.zip          holds <server>/...
+```
+
+The timestamp is local time, as `date "+%F-%H-%M-%S"` gave. Entries keep
+permission bits and modification times, directories have their own entries
+and are listed in name order. A world backup covers the worlds in
+`WORLD_STORAGE_PATH` only; worlds in the inactive directory are skipped (a
+world present in both directories is skipped with a warning). A complete
+backup is the server directory, which includes inactive storage when it lives
+there; if world storage is configured outside the server directory a warning
+says those worlds are not in it. Without an `msm.conf` the archive directories
+are `archives/worlds` and `archives/backups` beside the servers directory.
+Archive files are `0600` and their directories `0700` (DEV-026).
+
+The world layout is the one WorldEdit's snapshot database reads: point its
+snapshot directory at `WORLD_ARCHIVE_PATH/<server>`. This was checked against
+WorldEdit's own source, not assumed: see [Tests](#tests-5).
+
+### A stopped server
+
+The backup holds the server's lock and proves the server stopped, then
+archives the files in place. This is the only mode that claims a consistent
+copy of everything, plugins and configuration included.
+
+### A running server
+
+The sequence, with the server's lock held throughout:
+
+1. A marker, `.msm-backup-pending`, is written in the server directory.
+2. `say` (`MESSAGE_WORLD_BACKUP_STARTED` or `MESSAGE_COMPLETE_BACKUP_STARTED`),
+   then `save-off` and `save-all` as the server's version profile spells them.
+   Each must be confirmed by a log line written after it was sent (DEV-010,
+   DEV-021); an unanswered or refused command stops the backup. `save-all` is
+   followed by `sync(2)`. A server that refuses `save-off` (it is already off)
+   is left as it was.
+3. The worlds (or the server tree) are copied to a hidden staging directory
+   next to the archives, within `SaveWindow` (15 minutes).
+4. `save-on`, confirmed, and the marker is rewritten without `saving_off`.
+5. Only then is the copy compressed, within `--backup-timeout`, and the
+   staging directory removed.
+
+The prior state of automatic saving cannot be read from the server; the
+manager assumes it was on, as the legacy one did, except when `save-off` is
+refused. A world flagged for RAM whose RAM copy exists makes the backup of a
+running server refuse until P12 provides the RAM-to-disk sync (a hook,
+`Config.SyncRAM`, is called after `save-all`).
+
+Limits of a live backup, printed each time: worlds are saved and copied
+together, but plugin data, configuration and logs outside the worlds are not
+flushed by `save-all` and are copied while the server runs (a complete backup)
+or not at all (a world backup). For a consistent copy of those, stop the
+server.
+
+### Failure and recovery
+
+* Saving is turned back on after any error, on Ctrl+C or `SIGTERM` (the
+  context is canceled; the re-enable runs on a fresh two-minute context) and
+  when the save window passes. If it cannot be turned back on the error says
+  so, and the marker stays.
+* The marker also covers a manager killed with `SIGKILL`, a power loss or an
+  OOM kill. The next `worlds backup` or `backup` of that server takes the
+  lock (which proves the old process is gone), reads the marker, sends
+  `save-on` first if the server runs and saving may be off, and removes
+  `.msm-backup-staging-*` directories and `.msm-backup-*.partial` files below
+  the server's archive directories. The marker supplies only the fact that
+  saving may be off; what is deleted is found from the configured archive
+  directories, never from paths in the marker, which the server's owner can
+  edit. There is no separate recovery command, and no restore command: restore
+  stays a manual `unzip`.
+* An archive is written to `.msm-backup-<random>.partial`, flushed, re-read to
+  check it holds every planned entry, and published by `link(2)` to its final
+  name, which cannot replace an existing archive. A full disk (`ENOSPC`), a
+  permission error, a timeout, cancellation or a killed process therefore
+  never leave a file named `*.zip` that is incomplete, and the partial file is
+  removed or swept by the next backup. If one of several world archives fails,
+  the ones already published are complete and the error lists them.
+* The archive directory, the staging directory, the marker and the server lock
+  file are never archived, even when the archive directory is inside what is
+  being archived (including through a followed link).
+
+### Following links (DEV-011, DEV-025)
+
+World archives never follow links. A complete backup stores links as links
+unless the server's `COMPLETE_BACKUP_FOLLOW_SYMLINKS` is `true`. When it is,
+the tree is walked before the server is touched and the backup is refused,
+listing each `link -> target`, if a link leads outside the server directory,
+its two world storage directories and `JAR_STORAGE_PATH` (where a server JAR
+normally points); `--allow-external-links` accepts the list after review. A
+link that leads back to a directory already being archived is a cycle and is
+refused. Sockets, pipes and devices are skipped with a warning.
+
+### Unsupported configuration
+
+`RDIFF_BACKUP_ENABLED=true` or `RSYNC_BACKUP_ENABLED=true` makes `worlds
+backup` fail before anything is touched, naming the setting; those methods
+arrive with P11. So does `WORLD_ARCHIVE_ENABLED` other than `true`, and a
+server with no active world. A relative archive path is an invalid setting.
+
+### Privileges
+
+As for worlds: root drops to the server's owner before writing anything, and a
+non-root caller must be that owner.
+
+### Tests
+
+`internal/backup` uses a fake console that records every command in order and
+lets a test act as the server. They cover the layouts, modes and times, the
+inactive-world scope, link policies (stored, followed, external, cycle, the
+archive directory through a link), the live sequence (the archive holds the
+saved state, not what the server wrote after `save-on`), saving re-enabled
+after a refused or unanswered command, cancellation, a failed copy and a
+timeout, recovery after a killed manager and with a corrupt or hostile
+marker, `ENOSPC` and permission errors (stopped and live) leaving no archive,
+no overwrite, refusals, RAM worlds and a restore into a fresh directory
+compared with the original (a test helper, not a command).
+
+`TestWorldEditSnapshotAcceptance` runs WorldEdit's own
+`FileSystemSnapshotDatabase` and archive/date helpers (unmodified source,
+pinned to a commit of its `version/7.3.x` branch, with stubs for the code that
+reads chunks) over a real backup and checks it lists the snapshot, with its
+timestamp and `level.dat`; a control archive without the world folder is
+rejected. It needs a JDK and network access to build, so it is skipped unless
+`MSM_WORLDEDIT_HARNESS` names a directory built with
+`compatibility/worldedit/build.sh`; Linux CI builds it and sets the variable.
+`TestWorldEditSnapshotLayout` is a Go mirror of the same rules that always
+runs. No live Minecraft server with the WorldEdit plugin and a `//snapshot`
+command was run: that is P16 work.
 
 ## GitHub Actions
 

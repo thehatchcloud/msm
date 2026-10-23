@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/thehatchcloud/msm/internal/backup"
 	"github.com/thehatchcloud/msm/internal/clock"
 	"github.com/thehatchcloud/msm/internal/config"
 	"github.com/thehatchcloud/msm/internal/console"
@@ -45,6 +46,8 @@ type deps struct {
 	jars func(w io.Writer) (*jars.Manager, error)
 	// worlds builds the world manager over servers.
 	worlds func(w io.Writer) (*worlds.Manager, error)
+	// backup builds the backup manager.
+	backup func(w io.Writer, o lifecycleOptions) (*backup.Manager, error)
 	// program is how the legacy messages name the executable ($0).
 	program string
 }
@@ -54,6 +57,7 @@ func defaultDeps() deps {
 	d.worlds = hostWorlds(d)
 	d.lifecycle = hostLifecycle(d)
 	d.console = hostConsole(d)
+	d.backup = hostBackup(d)
 	d.stdio = hostStdio
 	return d
 }

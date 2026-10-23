@@ -552,3 +552,30 @@ func (m *Manager) ForAll(ctx context.Context, out Output, fn func(name string) e
 	}
 	return errors.Join(errs...)
 }
+
+// DoLocked is Do for a caller that already holds the server's lock, such as
+// a backup that keeps saving off while it copies. The caller must hold the
+// lock returned by Servers.LockServer for set's server.
+func (m *Manager) DoLocked(ctx context.Context, set *legacyconf.ServerSettings, steps []Step, out Output) error {
+	s, err := m.prepare(set, out)
+	if err != nil {
+		return err
+	}
+	return m.do(ctx, s, steps)
+}
+
+// Running reports whether the server's console is reachable: its screen
+// session is alive and matches the server. It is false when no session
+// exists, and an ErrNotProven error when the state cannot be told. A caller
+// that must act on a stopped server proves that separately.
+func (m *Manager) Running(ctx context.Context, set *legacyconf.ServerSettings, out Output) (bool, error) {
+	s, err := m.prepare(set, out)
+	if err != nil {
+		return false, err
+	}
+	st, err := s.observe(ctx)
+	if err != nil {
+		return false, err
+	}
+	return st.Session != nil && st.Liveness == screen.Running, nil
+}

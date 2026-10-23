@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/thehatchcloud/msm/internal/backup"
 	"github.com/thehatchcloud/msm/internal/buildinfo"
 	"github.com/thehatchcloud/msm/internal/clock"
 	"github.com/thehatchcloud/msm/internal/console"
@@ -57,7 +58,7 @@ func newServerFixture(t *testing.T) *serverFixture {
 	if err := os.Mkdir(jarRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	data := "USERNAME=\"" + me.Username + "\"\nSERVER_STORAGE_PATH=\"" + root + "\"\nDEFAULT_USERNAME=\"" + me.Username + "\"\nJAR_STORAGE_PATH=\"" + jarRoot + "\"\n"
+	data := "USERNAME=\"" + me.Username + "\"\nSERVER_STORAGE_PATH=\"" + root + "\"\nDEFAULT_USERNAME=\"" + me.Username + "\"\nJAR_STORAGE_PATH=\"" + jarRoot + "\"\nWORLD_ARCHIVE_PATH=\"" + filepath.Join(base, "archives", "worlds") + "\"\nBACKUP_ARCHIVE_PATH=\"" + filepath.Join(base, "archives", "backups") + "\"\n"
 	if err := os.WriteFile(conf, []byte(data), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -95,6 +96,21 @@ func (f *serverFixture) run(t *testing.T, stdin string, args ...string) (int, st
 			return nil, err
 		}
 		return worlds.New(worlds.Config{Servers: m})
+	}
+	d.backup = func(w io.Writer, o lifecycleOptions) (*backup.Manager, error) {
+		sm, err := d.servers(w)
+		if err != nil {
+			return nil, err
+		}
+		wm, err := d.worlds(w)
+		if err != nil {
+			return nil, err
+		}
+		cm, err := d.console(w, o)
+		if err != nil {
+			return nil, err
+		}
+		return backup.New(backup.Config{Servers: sm, Worlds: wm, Console: cm, Clock: clock.Real{}, Timeout: o.backupTimeout, JarRoot: f.jars})
 	}
 	d.stdio = func() process.Stdio { return process.Stdio{} }
 	d.console = func(w io.Writer, o lifecycleOptions) (*console.Manager, error) {
@@ -394,7 +410,7 @@ func TestWorldsCommands(t *testing.T) {
 	}
 	// Commands another task owns, and malformed ones, are the legacy answer.
 	for _, args := range [][]string{{"one", "worlds"}, {"one", "worlds", "list", "x"}, {"one", "worlds", "on"}, {"one", "worlds", "ram", "main"},
-		{"one", "worlds", "todisk"}, {"one", "worlds", "backup"}, {"one", "worlds", "bogus"}} {
+		{"one", "worlds", "todisk"}, {"one", "worlds", "backup", "x"}, {"one", "backup", "x"}, {"one", "worlds", "bogus"}} {
 		code, _, errOut := f.run(t, "", args...)
 		if code != ExitError || !strings.Contains(errOut, "No such command") {
 			t.Errorf("msm %s = %d, %q; want No such command", strings.Join(args, " "), code, errOut)
@@ -413,5 +429,56 @@ func TestWorldsCommands(t *testing.T) {
 	// Listing is read-only and works whatever the server is doing.
 	if code, _, errOut := f.run(t, "", "one", "worlds", "list"); code != ExitOK {
 		t.Errorf("list while running = %d, %q", code, errOut)
+	}
+}
+
+// CT-CMD-031, CT-CMD-035: msm <server> worlds backup and msm <server> backup
+// write ZIP archives where the configuration says; "all" backs up every
+// server, and a server not proven stopped (here: with no way to reach its
+// console) is refused rather than copied while it may be writing.
+func TestBackupCommands(t *testing.T) {
+	f := newServerFixture(t)
+	f.mustRun(t, "server", "create", "one")
+	f.mustRun(t, "server", "create", "two")
+	for _, w := range []string{"one/worldstorage/main", "one/worldstorage_inactive/spare", "two/worldstorage/other"} {
+		if err := os.MkdirAll(filepath.Join(f.root, w), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(f.root, w, "level.dat"), []byte(w), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	archives := filepath.Join(filepath.Dir(f.root), "archives")
+	count := func(dir string) int {
+		m, _ := filepath.Glob(filepath.Join(dir, "*.zip"))
+		return len(m)
+	}
+	if out := f.mustRun(t, "one", "worlds", "backup"); !strings.Contains(out, "Backup took") {
+		t.Errorf("worlds backup output = %q", out)
+	}
+	if count(filepath.Join(archives, "worlds", "one", "main")) != 1 || count(filepath.Join(archives, "worlds", "one", "spare")) != 0 {
+		t.Errorf("worlds backup wrote the wrong archives")
+	}
+	f.mustRun(t, "one", "backup")
+	if count(filepath.Join(archives, "backups", "one")) != 1 {
+		t.Errorf("complete backup not written")
+	}
+	f.mustRun(t, "all", "worlds", "backup")
+	if count(filepath.Join(archives, "worlds", "two", "other")) != 1 {
+		t.Errorf("all did not back up server two")
+	}
+	if code, _, errOut := f.run(t, "", "ghost", "backup"); code != ExitError || !strings.Contains(errOut, `there is no server with the name "ghost"`) {
+		t.Errorf("ghost backup = %d, %q", code, errOut)
+	}
+	if code, _, errOut := f.run(t, "", "one", "backup", "--backup-timeout=-1s"); code != ExitError || !strings.Contains(errOut, "--backup-timeout") {
+		t.Errorf("negative timeout = %d, %q", code, errOut)
+	}
+	f.states["two"] = servers.Running
+	before := count(filepath.Join(archives, "backups", "two"))
+	if code, _, errOut := f.run(t, "", "two", "backup"); code != ExitError || !strings.Contains(errOut, "running") {
+		t.Errorf("backup of a running server = %d, %q", code, errOut)
+	}
+	if count(filepath.Join(archives, "backups", "two")) != before {
+		t.Errorf("a server that could not be proven stopped was archived")
 	}
 }

@@ -355,3 +355,36 @@ func (w *prefixWriter) flush() {
 		w.buf = nil
 	}
 }
+
+// Inventory is what a server's world storage holds, for the backup
+// commands. Ambiguous names, which exist in both storage directories, are
+// listed in Worlds twice; a caller that needs one world skips them.
+type Inventory struct {
+	ActiveDir, InactiveDir string
+	Worlds                 []World
+	Ambiguous              map[string]bool
+	// Warnings describe entries that are ignored or left over.
+	Warnings []string
+}
+
+// Inventory discovers a server's worlds without changing anything.
+func (m *Manager) Inventory(s *legacyconf.ServerSettings) (*Inventory, error) {
+	l, err := m.load(s)
+	if err != nil {
+		return nil, err
+	}
+	return &Inventory{ActiveDir: l.active, InactiveDir: l.inact, Worlds: l.worlds,
+		Ambiguous: l.ambiguousNames, Warnings: l.warnings}, nil
+}
+
+// HasRAMCopy reports whether the world is served from a RAM copy that may
+// hold newer data than its directory on disk: RAM worlds are enabled, the
+// world is flagged and the copy exists.
+func (m *Manager) HasRAMCopy(s *legacyconf.ServerSettings, w World) bool {
+	root := m.ramRoot()
+	if root == "" || !w.InRAM {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(root, s.Name, w.Name))
+	return err == nil
+}

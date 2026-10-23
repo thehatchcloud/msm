@@ -22,6 +22,9 @@ import (
 type lifecycleOptions struct {
 	timeout time.Duration
 	jobs    int
+	// backupTimeout and allowExternalLinks apply to the backup commands.
+	backupTimeout      time.Duration
+	allowExternalLinks bool
 }
 
 func (o *lifecycleOptions) register(cmd *cobra.Command) {
@@ -31,6 +34,9 @@ func (o *lifecycleOptions) register(cmd *cobra.Command) {
 }
 
 func (o *lifecycleOptions) validate() error {
+	if o.backupTimeout < 0 {
+		return errors.New("--backup-timeout must not be negative")
+	}
 	if o.timeout < 0 {
 		return errors.New("--timeout must not be negative")
 	}
@@ -176,7 +182,16 @@ func runServerCommand(cmd *cobra.Command, d deps, o lifecycleOptions, args []str
 	if word == "jar" {
 		return runJarCommand(cmd, d, target, args[2:])
 	}
+	if word == "backup" {
+		if len(args) != 2 {
+			return errNoSuchCommand
+		}
+		return runBackupCommand(cmd, d, o, target, true)
+	}
 	if word == "worlds" {
+		if len(args) == 3 && args[2] == "backup" {
+			return runBackupCommand(cmd, d, o, target, false)
+		}
 		return runWorldsCommand(cmd, d, target, args[2:])
 	}
 	if handled, err := runConsoleCommand(cmd, d, o, target, word, args[2:]); handled {
