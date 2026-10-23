@@ -71,7 +71,7 @@ func readPending(serverDir string) (p pending, ok bool, err error) {
 }
 
 // sweep removes what an interrupted backup left in an archive directory:
-// the staging directory and unfinished archives. It removes only names this
+// the staging directory, unfinished archives and unfinished snapshots. It removes only names this
 // package creates, below the directories the settings name; it never acts
 // on a path read from the marker, which the server's owner can write. base
 // is the server's archive directory; world archive directories are its
@@ -102,6 +102,10 @@ func sweep(base string) (removed []string, err error) {
 		path := filepath.Join(base, e.Name())
 		switch {
 		case strings.HasPrefix(e.Name(), stagingPrefix):
+			makeRemovable(path)
+			try(path, true)
+		case snapshotPartial.MatchString(e.Name()) && e.IsDir():
+			makeRemovable(path)
 			try(path, true)
 		case strings.HasPrefix(e.Name(), tmpPrefix) && strings.HasSuffix(e.Name(), tmpSuffix):
 			try(path, false)
@@ -111,8 +115,13 @@ func sweep(base string) (removed []string, err error) {
 				continue
 			}
 			for _, s := range subs {
-				if strings.HasPrefix(s.Name(), tmpPrefix) && strings.HasSuffix(s.Name(), tmpSuffix) && !s.IsDir() {
-					try(filepath.Join(path, s.Name()), false)
+				sub := filepath.Join(path, s.Name())
+				switch {
+				case snapshotPartial.MatchString(s.Name()) && s.IsDir():
+					makeRemovable(sub)
+					try(sub, true)
+				case strings.HasPrefix(s.Name(), tmpPrefix) && strings.HasSuffix(s.Name(), tmpSuffix) && !s.IsDir():
+					try(sub, false)
 				}
 			}
 		}

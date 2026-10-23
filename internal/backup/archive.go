@@ -42,6 +42,8 @@ type fsOps interface {
 	CreateTemp(dir string) (sink, string, error)
 	// Open opens a source file.
 	Open(path string) (io.ReadCloser, error)
+	// Link makes newname another name for the file oldname.
+	Link(oldname, newname string) error
 }
 
 type osOps struct{}
@@ -62,6 +64,8 @@ func (osOps) CreateTemp(dir string) (sink, string, error) {
 func (osOps) Open(path string) (io.ReadCloser, error) {
 	return os.Open(path)
 }
+
+func (osOps) Link(oldname, newname string) error { return os.Link(oldname, newname) }
 
 // writeArchive writes the plan to dir as a zip named for when, and
 // publishes it only when it is complete: the archive is written under a
@@ -245,7 +249,11 @@ func stage(ctx context.Context, ops fsOps, stageDir string, entries []entry) ([]
 				return nil, fmt.Errorf("stage %s: %w", e.Src, err)
 			}
 		case kindLink:
-			// Stored as link text; nothing is copied.
+			// Nothing is copied. The link is recreated so the staged tree
+			// is a faithful copy for a program that reads it as a tree.
+			if err := os.Symlink(e.Target, dst); err != nil {
+				return nil, fmt.Errorf("stage %s: %w", e.Src, err)
+			}
 		default:
 			if err := stageFile(ctx, ops, e, dst); err != nil {
 				return nil, err
@@ -274,5 +282,10 @@ func stageFile(ctx context.Context, ops fsOps, e entry, dst string) (err error) 
 	if _, err := io.Copy(out, &ctxReader{ctx: ctx, r: in}); err != nil {
 		return fmt.Errorf("stage %s: %w", e.Src, err)
 	}
-	return out.Sync()
+	if err := out.Sync(); err != nil {
+		return err
+	}
+	// Keep the time the file had, so a snapshot or repository made from the
+	// copy records it.
+	return os.Chtimes(dst, e.Info.ModTime(), e.Info.ModTime())
 }

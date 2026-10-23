@@ -33,6 +33,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -41,6 +42,7 @@ import (
 	"github.com/thehatchcloud/msm/internal/console"
 	"github.com/thehatchcloud/msm/internal/filelock"
 	"github.com/thehatchcloud/msm/internal/legacyconf"
+	"github.com/thehatchcloud/msm/internal/process"
 	"github.com/thehatchcloud/msm/internal/profiles"
 	"github.com/thehatchcloud/msm/internal/safepath"
 	"github.com/thehatchcloud/msm/internal/servers"
@@ -48,13 +50,12 @@ import (
 )
 
 var (
-	ErrNotProven   = errors.New("backup: server state cannot be proven")
-	ErrNoWorlds    = errors.New("backup: the server has no active worlds to back up")
-	ErrUnsupported = errors.New("backup: a configured backup method is not available")
-	ErrDisabled    = errors.New("backup: world archives are disabled")
-	ErrSettings    = errors.New("backup: invalid setting")
-	ErrRAMWorld    = errors.New("backup: a world lives in RAM")
-	ErrSavingLeft  = errors.New("backup: saving may still be disabled")
+	ErrNotProven  = errors.New("backup: server state cannot be proven")
+	ErrNoWorlds   = errors.New("backup: the server has no active worlds to back up")
+	ErrDisabled   = errors.New("backup: no backup method is enabled")
+	ErrSettings   = errors.New("backup: invalid setting")
+	ErrRAMWorld   = errors.New("backup: a world lives in RAM")
+	ErrSavingLeft = errors.New("backup: saving may still be disabled")
 )
 
 const (
@@ -68,6 +69,8 @@ const (
 
 	defaultWorldArchivePath  = "/opt/msm/archives/worlds"
 	defaultServerArchivePath = "/opt/msm/archives/backups"
+	defaultRdiffPath         = "/opt/msm/rdiff-backup/worlds"
+	defaultRsyncPath         = "/opt/msm/rsync/worlds"
 )
 
 // Console is the part of the console manager a backup uses. The caller
@@ -104,6 +107,13 @@ type Config struct {
 	// a backup refuses a server whose world lives in RAM, since the copy
 	// on disk may be stale.
 	SyncRAM func(ctx context.Context, set *legacyconf.ServerSettings) error
+	// Runner runs rdiff-backup; nil means process.ExecRunner.
+	Runner process.Runner
+	// LookPath finds a program in PATH; nil means exec.LookPath.
+	LookPath func(name string) (string, error)
+	// EUID is the effective user ID the backup runs as; nil means
+	// os.Geteuid.
+	EUID func() int
 }
 
 // Manager makes backups.
@@ -119,6 +129,15 @@ func New(cfg Config) (*Manager, error) {
 	}
 	if cfg.Timeout < 0 || cfg.SaveWindow < 0 {
 		return nil, errors.New("backup: timeouts must not be negative")
+	}
+	if cfg.Runner == nil {
+		cfg.Runner = process.ExecRunner{}
+	}
+	if cfg.LookPath == nil {
+		cfg.LookPath = exec.LookPath
+	}
+	if cfg.EUID == nil {
+		cfg.EUID = os.Geteuid
 	}
 	if cfg.Timeout == 0 {
 		cfg.Timeout = DefaultTimeout
@@ -178,14 +197,20 @@ type job struct {
 	// warnings are shown before the backup starts.
 	warnings []string
 	ramSync  bool
+	// methods are the world backup methods; nil for a complete backup.
+	methods *methods
+	// stageBase is the directory a live backup stages its copy in.
+	stageBase string
 }
 
 // unit is one archive.
 type unit struct {
-	name    string // world name, or server name
-	root    string // directory to archive
-	dir     string // where its archive is published
-	entries []entry
+	name     string // world name, or server name
+	root     string // directory to archive
+	dir      string // where its archive is published
+	rdiffDir string // its rdiff-backup repository
+	rsyncDir string // where its hard-link snapshots are published
+	entries  []entry
 }
 
 func (m *Manager) global(name, def string) string {
@@ -200,10 +225,10 @@ func (m *Manager) global(name, def string) string {
 // archiveRoot is a configured archive directory. With no msm.conf it is
 // beside the servers, so a rootless installation keeps its backups with its
 // data.
-func (m *Manager) archiveRoot(setting, def, sibling string) (string, error) {
+func (m *Manager) archiveRoot(setting, def, rootless string) (string, error) {
 	p := def
 	if m.cfg.Servers.Global() == nil {
-		p = filepath.Join(filepath.Dir(m.cfg.Servers.Root()), "archives", sibling)
+		p = rootless
 	}
 	p = m.global(setting, p)
 	if err := safepath.ValidateConfiguredRoot(p); err != nil {
@@ -213,15 +238,38 @@ func (m *Manager) archiveRoot(setting, def, sibling string) (string, error) {
 }
 
 func (m *Manager) bases(set *legacyconf.ServerSettings) (worldsBase, serverBase string, err error) {
-	w, err := m.archiveRoot("WORLD_ARCHIVE_PATH", defaultWorldArchivePath, "worlds")
+	parent := filepath.Dir(m.cfg.Servers.Root())
+	w, err := m.archiveRoot("WORLD_ARCHIVE_PATH", defaultWorldArchivePath, filepath.Join(parent, "archives", "worlds"))
 	if err != nil {
 		return "", "", err
 	}
-	s, err := m.archiveRoot("BACKUP_ARCHIVE_PATH", defaultServerArchivePath, "backups")
+	s, err := m.archiveRoot("BACKUP_ARCHIVE_PATH", defaultServerArchivePath, filepath.Join(parent, "archives", "backups"))
 	if err != nil {
 		return "", "", err
 	}
 	return filepath.Join(w, set.Name), filepath.Join(s, set.Name), nil
+}
+
+// sweepDirs are the directories an interrupted backup may have left files
+// in: every method's directory for the server, whether or not the method
+// is enabled now. A setting of a method that is off and cannot be used is
+// left out rather than blocking the other methods.
+func (m *Manager) sweepDirs(set *legacyconf.ServerSettings) ([]string, error) {
+	w, s, err := m.bases(set)
+	if err != nil {
+		return nil, err
+	}
+	out := []string{w, s}
+	parent := filepath.Dir(m.cfg.Servers.Root())
+	for _, d := range []struct{ setting, def, rootless string }{
+		{"WORLD_RDIFF_PATH", defaultRdiffPath, filepath.Join(parent, "rdiff-backup", "worlds")},
+		{"WORLD_RSYNC_PATH", defaultRsyncPath, filepath.Join(parent, "rsync", "worlds")},
+	} {
+		if root, err := m.archiveRoot(d.setting, d.def, d.rootless); err == nil {
+			out = append(out, filepath.Join(root, set.Name))
+		}
+	}
+	return out, nil
 }
 
 func (m *Manager) run(ctx context.Context, name string, md mode, out Output) (err error) {
@@ -250,7 +298,7 @@ func (m *Manager) run(ctx context.Context, name string, md mode, out Output) (er
 	if err := m.recover(ctx, set, running, out); err != nil {
 		return err
 	}
-	j, err := m.prepare(set, md)
+	j, err := m.prepare(ctx, set, md)
 	if err != nil {
 		return err
 	}
@@ -270,7 +318,7 @@ func (m *Manager) run(ctx context.Context, name string, md mode, out Output) (er
 	}
 	if !running {
 		printf(out.Out, "Server %q is stopped; its files cannot change during the backup.", name)
-		return m.finish(ctx, j, nil, out)
+		return m.finish(ctx, j, nil, "", out)
 	}
 	return m.live(ctx, j, out)
 }
@@ -291,12 +339,12 @@ func (m *Manager) recover(ctx context.Context, set *legacyconf.ServerSettings, r
 			}
 		}
 	}
-	w, s, err := m.bases(set)
+	bases, err := m.sweepDirs(set)
 	if err != nil {
 		return err
 	}
 	var errs []error
-	for _, base := range []string{w, s} {
+	for _, base := range bases {
 		removed, err := sweep(base)
 		errs = append(errs, err)
 		for _, r := range removed {
@@ -314,56 +362,52 @@ func (m *Manager) recover(ctx context.Context, set *legacyconf.ServerSettings, r
 
 // prepare checks the configuration and the tree, and makes the archive
 // directories, without touching the server.
-func (m *Manager) prepare(set *legacyconf.ServerSettings, md mode) (*job, error) {
-	worldsBase, serverBase, err := m.bases(set)
-	if err != nil {
-		return nil, err
-	}
+func (m *Manager) prepare(ctx context.Context, set *legacyconf.ServerSettings, md mode) (*job, error) {
 	j := &job{mode: md, set: set}
 	if md == modeWorlds {
-		if err := m.requireZipOnly(); err != nil {
+		ms, err := m.worldMethods(set.Name)
+		if err != nil {
 			return nil, err
 		}
-		j.base = worldsBase
+		j.methods = ms
+		j.stageBase = ms.stageBase()
+		j.base = ms.zipBase
 	} else {
-		j.base = serverBase
+		_, serverBase, err := m.bases(set)
+		if err != nil {
+			return nil, err
+		}
+		j.base, j.stageBase = serverBase, serverBase
 	}
-	if err := os.MkdirAll(j.base, archiveDirPm); err != nil {
-		return nil, fmt.Errorf("create the archive directory: %w", err)
+	dirs := []string{j.stageBase}
+	if md == modeWorlds {
+		dirs = j.methods.bases()
 	}
-	base, err := os.Stat(j.base)
-	if err != nil {
-		return nil, err
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, archiveDirPm); err != nil {
+			return nil, fmt.Errorf("create the backup directory: %w", err)
+		}
+		info, err := os.Stat(dir)
+		if err != nil {
+			return nil, err
+		}
+		j.exclude = append(j.exclude, info)
 	}
-	j.exclude = []os.FileInfo{base}
 	j.policy = policy{Exclude: j.exclude, ExcludeNames: []string{pendingName, filepath.Base(filelock.ServerLockPath(set.Dir))}}
 
 	if md == modeWorlds {
-		return j, m.prepareWorlds(j)
+		return j, m.prepareWorlds(ctx, j)
 	}
 	return j, m.prepareComplete(j)
 }
 
-// requireZipOnly refuses a configuration that asks for a backup method this
-// build does not make, instead of dropping it silently.
-func (m *Manager) requireZipOnly() error {
-	for _, name := range []string{"RDIFF_BACKUP_ENABLED", "RSYNC_BACKUP_ENABLED"} {
-		if m.global(name, "false") == "true" {
-			return fmt.Errorf("%w: %s=true, but rdiff-backup and rsync backups are not part of the ZIP backups (P11 adds them); set it to false to make ZIP backups only", ErrUnsupported, name)
-		}
-	}
-	if m.global("WORLD_ARCHIVE_ENABLED", "true") != "true" {
-		return fmt.Errorf("%w: WORLD_ARCHIVE_ENABLED is %q, so no world archive would be made", ErrDisabled, m.global("WORLD_ARCHIVE_ENABLED", "true"))
-	}
-	return nil
-}
-
-func (m *Manager) prepareWorlds(j *job) error {
+func (m *Manager) prepareWorlds(ctx context.Context, j *job) error {
 	inv, err := m.cfg.Worlds.Inventory(j.set)
 	if err != nil {
 		return err
 	}
 	j.warnings = append(j.warnings, inv.Warnings...)
+	ms := j.methods
 	for _, w := range inv.Worlds {
 		if !w.Active || inv.Ambiguous[w.Name] {
 			continue
@@ -371,17 +415,30 @@ func (m *Manager) prepareWorlds(j *job) error {
 		if m.cfg.Worlds.HasRAMCopy(j.set, w) {
 			j.ramSync = true
 		}
-		dir := filepath.Join(j.base, w.Name)
-		if err := os.MkdirAll(dir, archiveDirPm); err != nil {
-			return fmt.Errorf("create the archive directory for world %q: %w", w.Name, err)
+		u := unit{name: w.Name, root: w.Dir}
+		for _, d := range []struct {
+			on   bool
+			base string
+			dst  *string
+		}{{ms.zip, ms.zipBase, &u.dir}, {ms.rdiff, ms.rdiffBase, &u.rdiffDir}, {ms.rsync, ms.rsyncBase, &u.rsyncDir}} {
+			if !d.on {
+				continue
+			}
+			*d.dst = filepath.Join(d.base, w.Name)
+			if err := os.MkdirAll(*d.dst, archiveDirPm); err != nil {
+				return fmt.Errorf("create the backup directory for world %q: %w", w.Name, err)
+			}
 		}
-		j.units = append(j.units, unit{name: w.Name, root: w.Dir, dir: dir})
+		j.units = append(j.units, u)
 	}
 	if len(j.units) == 0 {
 		return ErrNoWorlds
 	}
-	// World archives never follow links (see DEV-025).
+	// World backups never follow links (see DEV-025).
 	j.policy.Follow = false
+	if err := m.prepareTools(ctx, ms, j.units); err != nil {
+		return err
+	}
 	return m.replan(j)
 }
 
@@ -454,7 +511,7 @@ func (m *Manager) live(ctx context.Context, j *job, out Output) (err error) {
 	}
 	m.say(ctx, j, set.Get(startMsg), out)
 
-	stageDir, err := newStageDir(j.base)
+	stageDir, err := newStageDir(j.stageBase)
 	if err != nil {
 		return fmt.Errorf("create the staging directory: %w", err)
 	}
@@ -466,11 +523,11 @@ func (m *Manager) live(ctx context.Context, j *job, out Output) (err error) {
 			if rerr := m.saveOn(rctx, set, out); rerr != nil {
 				// The marker stays, so the next backup tries again.
 				err = errors.Join(err, fmt.Errorf("%w: %v; the next backup of this server will try again", ErrSavingLeft, rerr))
-				os.RemoveAll(stageDir)
+				removeTree(stageDir)
 				return
 			}
 		}
-		os.RemoveAll(stageDir)
+		removeTree(stageDir)
 		if err != nil {
 			removePending(set.Dir)
 		}
@@ -521,7 +578,7 @@ func (m *Manager) live(ctx context.Context, j *job, out Output) (err error) {
 	if err := writePending(set.Dir, pending{Operation: j.mode.String(), Server: set.Name, PID: os.Getpid(), Started: m.cfg.Clock.Now()}); err != nil {
 		return err
 	}
-	if err := m.finish(ctx, j, staged, out); err != nil {
+	if err := m.finish(ctx, j, staged, stageDir, out); err != nil {
 		return err
 	}
 	m.say(ctx, j, set.Get(endMsg), out)
@@ -543,33 +600,66 @@ func (m *Manager) say(ctx context.Context, j *job, msg string, out Output) {
 	}
 }
 
-// finish compresses each unit and removes the marker. staged is the staged
-// copy of each unit's entries, or nil to archive the files in place (the
-// server is stopped).
-func (m *Manager) finish(ctx context.Context, j *job, staged [][]entry, out Output) error {
+// finish makes every enabled backup of each unit and removes the marker.
+// staged is the staged copy of each unit's entries under stageDir, or nil to
+// back up the files in place (the server is stopped).
+func (m *Manager) finish(ctx context.Context, j *job, staged [][]entry, stageDir string, out Output) error {
 	ctx, cancel := context.WithTimeout(ctx, m.cfg.Timeout)
 	defer cancel()
 	set := j.set
 	var published []string
+	fail := func(what string, err error) error {
+		removePending(set.Dir)
+		if len(published) > 0 {
+			err = fmt.Errorf("%w (already published: %s)", err, strings.Join(published, ", "))
+		}
+		if ctx.Err() != nil {
+			err = fmt.Errorf("backup of %s did not finish: %w", what, err)
+		}
+		return err
+	}
 	for i, u := range j.units {
 		entries := u.entries
 		if staged != nil {
 			entries = staged[i]
 		}
-		printf(out.Out, "Compressing %s...", u.name)
-		final, err := writeArchive(ctx, m.ops, u.dir, m.cfg.Clock.Now(), entries)
-		if err != nil {
-			removePending(set.Dir)
-			if len(published) > 0 {
-				err = fmt.Errorf("%w (already published: %s)", err, strings.Join(published, ", "))
+		ms := j.methods
+		if ms == nil || ms.zip {
+			printf(out.Out, "Compressing %s...", u.name)
+			final, err := writeArchive(ctx, m.ops, u.dir, m.cfg.Clock.Now(), entries)
+			if err != nil {
+				return fail(u.name, err)
 			}
-			if ctx.Err() != nil {
-				err = fmt.Errorf("backup of %s did not finish: %w", u.name, err)
-			}
-			return err
+			published = append(published, final)
+			printf(out.Out, "Wrote %s", final)
 		}
-		published = append(published, final)
-		printf(out.Out, "Wrote %s", final)
+		if ms != nil && ms.rdiff {
+			src := u.root
+			if staged != nil {
+				src = filepath.Join(stageDir, u.name)
+				if err := restoreMeta(stageDir, entries); err != nil {
+					return fail(u.name, err)
+				}
+			}
+			printf(out.Out, "rdiff-backup %s...", u.name)
+			if err := m.rdiffBackup(ctx, ms.tool, src, u.rdiffDir, ms.rotation); err != nil {
+				return fail(u.name, err)
+			}
+			published = append(published, u.rdiffDir)
+			printf(out.Out, "Wrote an rdiff-backup increment to %s", u.rdiffDir)
+		}
+		if ms != nil && ms.rsync {
+			printf(out.Out, "Taking a hard-link snapshot of %s...", u.name)
+			st, err := writeSnapshot(ctx, m.ops, u.rsyncDir, u.name, m.cfg.Clock.Now(), entries)
+			if st.NoLinks != "" {
+				printf(out.Err, "Warning: %s", st.NoLinks)
+			}
+			if err != nil {
+				return fail(u.name, err)
+			}
+			published = append(published, st.Path)
+			printf(out.Out, "Wrote %s (%d files linked to the previous snapshot, %d copied)", st.Path, st.Linked, st.Copied)
+		}
 	}
 	return removePending(set.Dir)
 }

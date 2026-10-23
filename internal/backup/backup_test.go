@@ -114,8 +114,9 @@ func newEnv(t *testing.T, extra string) *env {
 		t.Fatal(err)
 	}
 	archives := filepath.Join(base, "archives")
+	// @BASE@ in extra is the test's temporary directory.
 	conf := fmt.Sprintf("SERVER_STORAGE_PATH=%q\nWORLD_ARCHIVE_PATH=%q\nBACKUP_ARCHIVE_PATH=%q\n%s\n",
-		root, filepath.Join(archives, "worlds"), filepath.Join(archives, "backups"), extra)
+		root, filepath.Join(archives, "worlds"), filepath.Join(archives, "backups"), strings.ReplaceAll(extra, "@BASE@", base))
 	path := filepath.Join(base, "msm.conf")
 	if err := os.WriteFile(path, []byte(conf), 0o644); err != nil {
 		t.Fatal(err)
@@ -141,6 +142,18 @@ func newEnv(t *testing.T, extra string) *env {
 		t.Fatal(err)
 	}
 	return e
+}
+
+// rebuild replaces the backup manager with one whose configuration mod
+// has changed.
+func (e *env) rebuild(t *testing.T, mod func(*Config)) {
+	t.Helper()
+	cfg := Config{Servers: e.sm, Worlds: e.wm, Console: e.con, Clock: e.clk, JarRoot: filepath.Join(e.base, "jars")}
+	mod(&cfg)
+	var err error
+	if e.bm, err = New(cfg); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func (e *env) output() Output {
@@ -756,6 +769,14 @@ func TestRecoveryIgnoresMarkerPaths(t *testing.T) {
 type faultOps struct {
 	create func(dir string) (sink, string, error)
 	open   func(path string) (io.ReadCloser, error)
+	link   func(oldname, newname string) error
+}
+
+func (f faultOps) Link(oldname, newname string) error {
+	if f.link != nil {
+		return f.link(oldname, newname)
+	}
+	return os.Link(oldname, newname)
 }
 
 func (f faultOps) CreateTemp(dir string) (sink, string, error) {
@@ -919,26 +940,7 @@ func TestExistingArchiveIsKept(t *testing.T) {
 }
 
 func TestRefusals(t *testing.T) {
-	t.Run("rdiff enabled", func(t *testing.T) {
-		e := newEnv(t, "RDIFF_BACKUP_ENABLED=true")
-		dir := e.create(t, "srv")
-		world(t, filepath.Join(dir, "worldstorage"), "alpha")
-		err := e.bm.Worlds(context.Background(), "srv", e.output())
-		if !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), "RDIFF_BACKUP_ENABLED") {
-			t.Errorf("err = %v", err)
-		}
-		if len(e.con.commands()) != 0 {
-			t.Errorf("the server was touched")
-		}
-	})
-	t.Run("rsync enabled", func(t *testing.T) {
-		e := newEnv(t, "RSYNC_BACKUP_ENABLED=true")
-		e.create(t, "srv")
-		if err := e.bm.Worlds(context.Background(), "srv", e.output()); !errors.Is(err, ErrUnsupported) {
-			t.Errorf("err = %v", err)
-		}
-	})
-	t.Run("archives disabled", func(t *testing.T) {
+	t.Run("no method enabled", func(t *testing.T) {
 		e := newEnv(t, "WORLD_ARCHIVE_ENABLED=false")
 		dir := e.create(t, "srv")
 		world(t, filepath.Join(dir, "worldstorage"), "alpha")
