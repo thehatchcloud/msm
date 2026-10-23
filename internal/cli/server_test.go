@@ -20,6 +20,7 @@ import (
 	"github.com/thehatchcloud/msm/internal/lifecycle"
 	"github.com/thehatchcloud/msm/internal/process"
 	"github.com/thehatchcloud/msm/internal/servers"
+	"github.com/thehatchcloud/msm/internal/worlds"
 )
 
 type stateProber map[string]servers.StateKind
@@ -87,6 +88,13 @@ func (f *serverFixture) run(t *testing.T, stdin string, args ...string) (int, st
 		}
 		return lifecycle.New(lifecycle.Config{Servers: m, Clock: clock.Real{}, Timeout: o.timeout, Jobs: o.jobs,
 			Sessions: func(identity.Identity) (lifecycle.Sessions, error) { return nil, lifecycle.ErrNoScreen }})
+	}
+	d.worlds = func(w io.Writer) (*worlds.Manager, error) {
+		m, err := d.servers(w)
+		if err != nil {
+			return nil, err
+		}
+		return worlds.New(worlds.Config{Servers: m})
 	}
 	d.stdio = func() process.Stdio { return process.Stdio{} }
 	d.console = func(w io.Writer, o lifecycleOptions) (*console.Manager, error) {
@@ -325,5 +333,85 @@ func TestJargroupCommands(t *testing.T) {
 	}
 	if code, _, errOut := f.run(t, "", "jargroup", "delete", "--yes", "paper2"); code != ExitError || !strings.Contains(errOut, "no jar group") {
 		t.Fatalf("delete missing: %d %q", code, errOut)
+	}
+}
+
+// CT-CMD-027, CT-CMD-028, CT-CMD-032, CT-CMD-033: the server-first worlds
+// grammar, including the all-target forms and their errors.
+func TestWorldsCommands(t *testing.T) {
+	f := newServerFixture(t)
+	f.mustRun(t, "server", "create", "one")
+	f.mustRun(t, "server", "create", "two")
+	for _, w := range []string{"one/worldstorage/main", "one/worldstorage_inactive/spare", "two/worldstorage/other"} {
+		if err := os.MkdirAll(filepath.Join(f.root, w), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if out := f.mustRun(t, "one", "worlds", "list"); out != "     main\n     spare\n" {
+		t.Errorf("list = %q", out)
+	}
+	if out := f.mustRun(t, "all", "worlds", "list"); out != "one:      main\none:      spare\ntwo:      other\n" {
+		t.Errorf("all list = %q", out)
+	}
+	if out := f.mustRun(t, "one", "worlds", "load"); !strings.Contains(out, "Maintaining world symbolic links...") {
+		t.Errorf("load = %q", out)
+	}
+	if got, err := os.Readlink(filepath.Join(f.root, "one", "main")); err != nil || got != filepath.Join(f.root, "one", "worldstorage", "main") {
+		t.Errorf("link = %q, %v", got, err)
+	}
+	if out := f.mustRun(t, "one", "worlds", "off", "main"); !strings.Contains(out, "inactive worldstorage directory... Done.") {
+		t.Errorf("off = %q", out)
+	}
+	if out := f.mustRun(t, "one", "worlds", "on", "spare"); !strings.Contains(out, "active worldstorage directory... Done.") {
+		t.Errorf("on = %q", out)
+	}
+	if out := f.mustRun(t, "all", "worlds", "off", "all"); !strings.Contains(out, "one: Moving world \"spare\"") || !strings.Contains(out, "two: Moving world \"other\"") {
+		t.Errorf("all off all = %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(f.root, "two", "worldstorage_inactive", "other")); err != nil {
+		t.Error(err)
+	}
+	f.mustRun(t, "all", "worlds", "on", "all")
+	if _, err := os.Stat(filepath.Join(f.root, "two", "worldstorage", "other")); err != nil {
+		t.Error(err)
+	}
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"all", "worlds", "on", "main"}, `when specifying "all" servers, "all" worlds must be specified also`},
+		{[]string{"all", "worlds", "off", "main"}, `"all" worlds must be specified also`},
+		{[]string{"one", "worlds", "on", "all"}, `there is no world with the name "all"`},
+		{[]string{"one", "worlds", "on", "ghost"}, `there is no world with the name "ghost"`},
+		{[]string{"ghost", "worlds", "list"}, `there is no server with the name "ghost"`},
+	} {
+		code, _, errOut := f.run(t, "", tc.args...)
+		if code != ExitError || !strings.Contains(errOut, tc.want) {
+			t.Errorf("msm %s = %d, %q; want %q", strings.Join(tc.args, " "), code, errOut, tc.want)
+		}
+	}
+	// Commands another task owns, and malformed ones, are the legacy answer.
+	for _, args := range [][]string{{"one", "worlds"}, {"one", "worlds", "list", "x"}, {"one", "worlds", "on"}, {"one", "worlds", "ram", "main"},
+		{"one", "worlds", "todisk"}, {"one", "worlds", "backup"}, {"one", "worlds", "bogus"}} {
+		code, _, errOut := f.run(t, "", args...)
+		if code != ExitError || !strings.Contains(errOut, "No such command") {
+			t.Errorf("msm %s = %d, %q; want No such command", strings.Join(args, " "), code, errOut)
+		}
+	}
+
+	// A server not proven stopped is refused, and nothing moves.
+	f.states["one"] = servers.Running
+	code, _, errOut := f.run(t, "", "one", "worlds", "off", "main")
+	if code != ExitError || !strings.Contains(errOut, "running") {
+		t.Errorf("off while running = %d, %q", code, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(f.root, "one", "worldstorage", "main")); err != nil {
+		t.Error(err)
+	}
+	// Listing is read-only and works whatever the server is doing.
+	if code, _, errOut := f.run(t, "", "one", "worlds", "list"); code != ExitOK {
+		t.Errorf("list while running = %d, %q", code, errOut)
 	}
 }
