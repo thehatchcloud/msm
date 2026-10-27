@@ -170,8 +170,8 @@ var serverVerbs = map[string]lifecycle.Verb{
 // runServerCommand is the server-first grammar the root command accepts:
 // msm <server> start|stop [now]|restart [now]|status, with "all" as the
 // server applying the per-server command to every server; the console and
-// player commands (console.go) and jar. P09, P10, P12, P13 and P14 extend
-// this dispatcher to the remaining server commands.
+// player commands (console.go) and jar. P14 extends this dispatcher to the
+// remaining server commands.
 func runServerCommand(cmd *cobra.Command, d deps, o lifecycleOptions, args []string) error {
 	// Anything that matches no command gets the legacy answer, as
 	// call_command gives it.
@@ -187,6 +187,12 @@ func runServerCommand(cmd *cobra.Command, d deps, o lifecycleOptions, args []str
 			return errNoSuchCommand
 		}
 		return runBackupCommand(cmd, d, o, target, true)
+	}
+	if word == "logroll" {
+		if len(args) != 2 {
+			return errNoSuchCommand
+		}
+		return runLogrollCommand(cmd, d, o, target)
 	}
 	if word == "worlds" {
 		if len(args) == 3 && args[2] == "backup" {

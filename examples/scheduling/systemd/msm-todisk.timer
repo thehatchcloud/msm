@@ -1,0 +1,17 @@
+# Writes every RAM world to disk every 30 minutes (cron/msm: */30 * * * *).
+# Starts msm-maintenance@todisk.service. Nothing is installed by MSM; see
+# docs/maintenance.md.
+
+[Unit]
+Description=MSM maintenance timer: todisk
+
+[Timer]
+OnCalendar=*-*-* *:00,30:00
+AccuracySec=1s
+# A run missed while the machine was off is not made up at boot: a backup or
+# a restart in the middle of startup is not wanted.
+Persistent=false
+Unit=msm-maintenance@todisk.service
+
+[Install]
+WantedBy=timers.target

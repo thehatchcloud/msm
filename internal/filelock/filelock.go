@@ -42,6 +42,31 @@ func Acquire(path string) (*Lock, error) {
 	return &Lock{path: abs, file: file}, nil
 }
 
+// ErrBusy is returned by TryAcquire when another holder has the lock.
+var ErrBusy = errors.New("filelock: lock is held by another process")
+
+// TryAcquire is Acquire without waiting: it fails with ErrBusy at once if
+// another holder has the lock. A scheduled job uses it to skip a run that
+// overlaps its previous one instead of queueing behind it.
+func TryAcquire(path string) (*Lock, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("filelock: resolve %s: %w", path, err)
+	}
+	file, err := os.OpenFile(abs, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("filelock: open %s: %w", abs, err)
+	}
+	if err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		file.Close()
+		if errors.Is(err, unix.EWOULDBLOCK) {
+			return nil, fmt.Errorf("%w: %s", ErrBusy, abs)
+		}
+		return nil, fmt.Errorf("filelock: lock %s: %w", abs, err)
+	}
+	return &Lock{path: abs, file: file}, nil
+}
+
 // Path reports the absolute path backing the lock.
 func (l *Lock) Path() string { return l.path }
 

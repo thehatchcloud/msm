@@ -452,6 +452,29 @@ func (m *Manager) LockServer(name string) (*filelock.Lock, *legacyconf.ServerSet
 	return l, s, nil
 }
 
+// jobLockPrefix names a scheduled job's lock file in the storage root. A
+// server name cannot start with '.', so it never collides with a server.
+const jobLockPrefix = ".msm-job-"
+
+// TryLockJob takes the named scheduled job's lock without waiting, so a run
+// that overlaps the previous run of the same job can skip itself. It fails
+// with filelock.ErrBusy when the job is already running. The lock file is
+// handed to the manager user, so a job started by root and one started by
+// the manager user exclude each other.
+func (m *Manager) TryLockJob(name string) (*filelock.Lock, error) {
+	if err := safepath.ValidateName(name); err != nil {
+		return nil, fmt.Errorf("%w: job %v", ErrInvalidName, err)
+	}
+	if _, err := os.Stat(m.cfg.Root); errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("%w: SERVER_STORAGE_PATH %s does not exist", ErrNotFound, m.cfg.Root)
+	}
+	path := filepath.Join(m.cfg.Root, jobLockPrefix+name+".lock")
+	if err := m.lockFile(path, m.cfg.Owner); err != nil {
+		return nil, err
+	}
+	return filelock.TryAcquire(path)
+}
+
 func verifyLock(l *filelock.Lock) error {
 	held, err := l.Stat()
 	if err != nil {

@@ -1,0 +1,31 @@
+# Minecraft Server Manager maintenance, for /etc/cron.d/msm-maintenance.
+#
+# Nothing here is installed by MSM. See docs/maintenance.md for the opt-in
+# steps. The user column is the manager user (USERNAME in msm.conf) or root,
+# exactly as for a command typed by hand. Edit the path of the msm binary and
+# MSM_CONF to match your installation.
+#
+# Each line runs the msm binary directly, with the environment set here and
+# no shell pipeline. "maintenance run" skips a run whose previous run of the
+# same job is still going, and stops a job at its own timeout (backup 4h,
+# prune 1h, todisk 20m, recover 30m, logroll 15m; see --job-timeout).
+# cron mails whatever a job prints to MAILTO; skips and failures are the
+# only output when nothing else is going on.
+
+SHELL=/bin/sh
+PATH=/usr/local/bin:/usr/bin:/bin
+LANG=C.UTF-8
+MSM_CONF=/etc/msm.conf
+MAILTO=root
+
+# m   h   dom mon dow user       command
+# Rolls the logs of stopped servers at 04:55
+55    04  *   *   *   minecraft  /usr/local/bin/msm maintenance run logroll
+# Backs up the worlds of every server at 05:02
+02    05  *   *   *   minecraft  /usr/local/bin/msm maintenance run backup
+# Prunes old logs and backups at 05:10
+10    05  *   *   *   minecraft  /usr/local/bin/msm maintenance run prune
+# Writes every RAM world to disk every half hour
+*/30  *   *   *   *   minecraft  /usr/local/bin/msm maintenance run todisk
+# Starts active servers that stopped, every hour
+0     *   *   *   *   minecraft  /usr/local/bin/msm maintenance run recover

@@ -1,0 +1,17 @@
+# Backs up every server's worlds at 05:02 (cron/msm: 02 05 * * *).
+# Starts msm-maintenance@backup.service. Nothing is installed by MSM; see
+# docs/maintenance.md.
+
+[Unit]
+Description=MSM maintenance timer: backup
+
+[Timer]
+OnCalendar=*-*-* 05:02:00
+AccuracySec=1s
+# A run missed while the machine was off is not made up at boot: a backup or
+# a restart in the middle of startup is not wanted.
+Persistent=false
+Unit=msm-maintenance@backup.service
+
+[Install]
+WantedBy=timers.target

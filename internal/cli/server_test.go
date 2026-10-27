@@ -58,7 +58,7 @@ func newServerFixture(t *testing.T) *serverFixture {
 	if err := os.Mkdir(jarRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	data := "USERNAME=\"" + me.Username + "\"\nSERVER_STORAGE_PATH=\"" + root + "\"\nDEFAULT_USERNAME=\"" + me.Username + "\"\nJAR_STORAGE_PATH=\"" + jarRoot + "\"\nWORLD_ARCHIVE_PATH=\"" + filepath.Join(base, "archives", "worlds") + "\"\nBACKUP_ARCHIVE_PATH=\"" + filepath.Join(base, "archives", "backups") + "\"\n"
+	data := "USERNAME=\"" + me.Username + "\"\nSERVER_STORAGE_PATH=\"" + root + "\"\nDEFAULT_USERNAME=\"" + me.Username + "\"\nJAR_STORAGE_PATH=\"" + jarRoot + "\"\nWORLD_ARCHIVE_PATH=\"" + filepath.Join(base, "archives", "worlds") + "\"\nBACKUP_ARCHIVE_PATH=\"" + filepath.Join(base, "archives", "backups") + "\"\nLOG_ARCHIVE_PATH=\"" + filepath.Join(base, "archives", "logs") + "\"\n"
 	if err := os.WriteFile(conf, []byte(data), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -134,6 +134,8 @@ func (f *serverFixture) run(t *testing.T, stdin string, args ...string) (int, st
 		return jars.New(jars.Config{Root: js.root, Target: js.target, DownloadDir: js.downloadDir,
 			Owner: cfg.Owner, Servers: sm, Clock: clock.Real{}, HTTP: f.http})
 	}
+	d.roller = hostRoller(d)
+	d.pruner = hostPruner(d)
 	var out, errOut bytes.Buffer
 	code := run(args, strings.NewReader(stdin), &out, &errOut, buildinfo.Info{Version: "test"}, d)
 	return code, out.String(), errOut.String()

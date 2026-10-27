@@ -1,0 +1,17 @@
+# Rolls the logs of stopped servers at 04:55, as cron/msm did (55 04 * * *).
+# Starts msm-maintenance@logroll.service. Nothing is installed by MSM; see
+# docs/maintenance.md.
+
+[Unit]
+Description=MSM maintenance timer: logroll
+
+[Timer]
+OnCalendar=*-*-* 04:55:00
+AccuracySec=1s
+# A run missed while the machine was off is not made up at boot: a backup or
+# a restart in the middle of startup is not wanted.
+Persistent=false
+Unit=msm-maintenance@logroll.service
+
+[Install]
+WantedBy=timers.target

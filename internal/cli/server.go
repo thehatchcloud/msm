@@ -21,6 +21,7 @@ import (
 	"github.com/thehatchcloud/msm/internal/jars"
 	"github.com/thehatchcloud/msm/internal/legacyconf"
 	"github.com/thehatchcloud/msm/internal/lifecycle"
+	"github.com/thehatchcloud/msm/internal/maintenance"
 	"github.com/thehatchcloud/msm/internal/process"
 	"github.com/thehatchcloud/msm/internal/screen"
 	"github.com/thehatchcloud/msm/internal/servers"
@@ -48,6 +49,10 @@ type deps struct {
 	worlds func(w io.Writer) (*worlds.Manager, error)
 	// backup builds the backup manager.
 	backup func(w io.Writer, o lifecycleOptions) (*backup.Manager, error)
+	// roller builds the log roller.
+	roller func(w io.Writer, o lifecycleOptions) (*maintenance.Roller, error)
+	// pruner builds the retention pruner.
+	pruner func(w io.Writer) (*maintenance.Pruner, error)
 	// program is how the legacy messages name the executable ($0).
 	program string
 }
@@ -58,6 +63,8 @@ func defaultDeps() deps {
 	d.lifecycle = hostLifecycle(d)
 	d.console = hostConsole(d)
 	d.backup = hostBackup(d)
+	d.roller = hostRoller(d)
+	d.pruner = hostPruner(d)
 	d.stdio = hostStdio
 	return d
 }

@@ -1,6 +1,7 @@
 package filelock
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -176,5 +177,40 @@ func TestStatDescribesTheLockedFile(t *testing.T) {
 	}
 	if _, err := l.Stat(); err == nil {
 		t.Fatal("Stat of a released lock succeeded")
+	}
+}
+
+func TestTryAcquireFailsAtOnceWhileHeld(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "job.lock")
+	first, err := TryAcquire(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if _, err := TryAcquire(path); !errors.Is(err, ErrBusy) {
+		t.Fatalf("second TryAcquire error = %v, want ErrBusy", err)
+	}
+	if time.Since(start) > time.Second {
+		t.Error("TryAcquire waited for the lock")
+	}
+	if err := first.Release(); err != nil {
+		t.Fatal(err)
+	}
+	again, err := TryAcquire(path)
+	if err != nil {
+		t.Fatalf("TryAcquire after release: %v", err)
+	}
+	again.Release()
+}
+
+func TestTryAcquireExcludesAcquire(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "job.lock")
+	held, err := Acquire(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+	if _, err := TryAcquire(path); !errors.Is(err, ErrBusy) {
+		t.Fatalf("TryAcquire against Acquire = %v, want ErrBusy", err)
 	}
 }
