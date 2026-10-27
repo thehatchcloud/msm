@@ -8,7 +8,9 @@ lifecycle commands, the P07 JAR commands, the P08 console and player
 commands (see [Console and player commands](#console-and-player-commands-p08))
 the P09 world commands `worlds list|load|on|off` (see [Worlds](#worlds-p09)) and
 the P10 backup commands `worlds backup` and `backup`, which P11 extends with
-hard-link snapshots and rdiff-backup (see [Backups](#backups-p10)).
+hard-link snapshots and rdiff-backup (see [Backups](#backups-p10)), and the
+P12 commands `worlds ram` and `worlds todisk` (see [RAM-backed
+worlds](ram-worlds.md)).
 Every other management command returns a nonzero error. Viper reads the small native
 configuration schema described below. No Go command runs the legacy manager or
 launches Minecraft; the screen backend (P04) is a library that later lifecycle
@@ -806,8 +808,9 @@ GNU screen, run the commands against a real session, including the byte-exact
 
 `internal/worlds` and `msm <server> worlds list|load|on <world>|off <world>`
 manage a server's worlds (`compatibility/commands.tsv` CMD-027, CMD-028,
-CMD-032, CMD-033; SURF-006 to SURF-008). `worlds ram` and `todisk` arrive with
-P12 and are "No such command" until then; `worlds backup` is [P10](#backups-p10).
+CMD-032, CMD-033; SURF-006 to SURF-008). `worlds ram` and `todisk` are P12
+and described in [RAM-backed worlds](ram-worlds.md); `worlds backup` is
+[P10](#backups-p10).
 
 ```text
 msm <server> worlds list        list the worlds, active and inactive

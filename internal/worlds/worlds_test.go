@@ -36,12 +36,16 @@ func (p *fakeProber) Probe(_ context.Context, s *legacyconf.ServerSettings, _ id
 // making the call.
 type faulty struct {
 	osOps
-	fail  func(op string, args ...string) error
-	calls []string
+	fail       func(op string, args ...string) error
+	calls      []string
+	noExchange bool
+	mu         sync.Mutex
 }
 
 func (f *faulty) try(op string, args ...string) error {
+	f.mu.Lock()
 	f.calls = append(f.calls, op+" "+strings.Join(args, " "))
+	f.mu.Unlock()
 	if f.fail != nil {
 		return f.fail(op, args...)
 	}
@@ -104,6 +108,29 @@ func (f *faulty) Unlinkat(fd int, name string) error {
 	return f.osOps.Unlinkat(fd, name)
 }
 
+// CopyWorld fails like a full or broken filesystem: the part of the tree
+// written before the failure is left behind, as a real cut-short copy
+// would.
+func (f *faulty) CopyWorld(ctx context.Context, src, dst string, opt copyOptions) error {
+	if err := f.try("CopyWorld", src, dst); err != nil {
+		_ = os.MkdirAll(dst, 0o755)
+		_ = os.WriteFile(filepath.Join(dst, "partial"), []byte("x"), 0o644)
+		return err
+	}
+	return f.osOps.CopyWorld(ctx, src, dst, opt)
+}
+
+// Exchange reports an unsupported filesystem when noExchange is set.
+func (f *faulty) Exchange(a, b string) (bool, error) {
+	if err := f.try("Exchange", a, b); err != nil {
+		return false, err
+	}
+	if f.noExchange {
+		return false, nil
+	}
+	return f.osOps.Exchange(a, b)
+}
+
 type env struct {
 	base, root string
 	sm         *servers.Manager
@@ -155,6 +182,9 @@ func newEnvAs(t *testing.T, conf string, euid int) *env {
 		t.Fatal(err)
 	}
 	e.wm.ops = e.ops
+	// Temporary directories are on disk; tests that need the real check
+	// replace this one.
+	e.wm.ramCheck = func(string) error { return nil }
 	return e
 }
 
@@ -485,8 +515,9 @@ func TestAmbiguousWorld(t *testing.T) {
 const ramConf = "RAMDISK_STORAGE_ENABLED=true\nRAMDISK_STORAGE_PATH=%s\n"
 
 // CT-SURF-008: a world flagged for RAM links to its RAM copy when RAM worlds
-// are enabled and the copy exists; otherwise to disk, never to a path that
-// is not there.
+// are enabled and usable, and the copy is made when it is missing; a copy
+// this manager did not make is never used or replaced, and the world is
+// linked to disk instead.
 func TestLinksResolveRAMCopy(t *testing.T) {
 	ram := t.TempDir()
 	e := newEnv(t, fmt.Sprintf(ramConf, ram))
@@ -495,33 +526,31 @@ func TestLinksResolveRAMCopy(t *testing.T) {
 	world(t, active, "fast")
 	world(t, active, "nocopy")
 	world(t, active, "plain")
-	write(t, filepath.Join(active, "fast", "inram"), "")
-	write(t, filepath.Join(active, "nocopy", "inram"), "")
-	world(t, filepath.Join(ram, "s"), "fast")
+	world(t, active, "foreign")
+	for _, w := range []string{"fast", "nocopy", "foreign"} {
+		write(t, filepath.Join(active, w, "inram"), "")
+	}
+	e.seedRAM(t, "s", "fast")
+	world(t, filepath.Join(ram, "s"), "foreign")
 
 	if err := e.wm.Load(context.Background(), "s", e.output()); err != nil {
 		t.Fatal(err)
 	}
-	if got := readlink(t, filepath.Join(dir, "fast")); got != filepath.Join(ram, "s", "fast") {
-		t.Errorf("fast links to %q, want its RAM copy", got)
-	}
-	if got := readlink(t, filepath.Join(dir, "nocopy")); got != filepath.Join(active, "nocopy") {
-		t.Errorf("nocopy links to %q, want disk", got)
+	for _, w := range []string{"fast", "nocopy"} {
+		if got := readlink(t, filepath.Join(dir, w)); got != filepath.Join(ram, "s", w) {
+			t.Errorf("%s links to %q, want its RAM copy", w, got)
+		}
+		mustExist(t, filepath.Join(ram, "s", w, "level.dat"))
+		mustNotExist(t, filepath.Join(ram, "s", w, "inram"))
 	}
 	if got := readlink(t, filepath.Join(dir, "plain")); got != filepath.Join(active, "plain") {
 		t.Errorf("plain links to %q, want disk", got)
 	}
-	if !strings.Contains(e.errw.String(), `world "nocopy" is flagged to live in RAM`) {
+	if got := readlink(t, filepath.Join(dir, "foreign")); got != filepath.Join(active, "foreign") {
+		t.Errorf("foreign links to %q, want disk", got)
+	}
+	if !strings.Contains(e.errw.String(), `world "foreign" is flagged to live in RAM`) {
 		t.Errorf("stderr = %q", e.errw.String())
-	}
-
-	// A stale link to disk is moved to the RAM copy once it exists.
-	world(t, filepath.Join(ram, "s"), "nocopy")
-	if err := e.wm.Load(context.Background(), "s", e.output()); err != nil {
-		t.Fatal(err)
-	}
-	if got := readlink(t, filepath.Join(dir, "nocopy")); got != filepath.Join(ram, "s", "nocopy") {
-		t.Errorf("nocopy links to %q, want its RAM copy", got)
 	}
 }
 

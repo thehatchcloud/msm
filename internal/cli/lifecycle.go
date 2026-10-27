@@ -192,7 +192,7 @@ func runServerCommand(cmd *cobra.Command, d deps, o lifecycleOptions, args []str
 		if len(args) == 3 && args[2] == "backup" {
 			return runBackupCommand(cmd, d, o, target, false)
 		}
-		return runWorldsCommand(cmd, d, target, args[2:])
+		return runWorldsCommand(cmd, d, o, target, args[2:])
 	}
 	if handled, err := runConsoleCommand(cmd, d, o, target, word, args[2:]); handled {
 		return err

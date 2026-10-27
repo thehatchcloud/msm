@@ -20,6 +20,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -62,12 +63,19 @@ func (o Output) warnf(format string, a ...any) {
 // Config connects worlds to the servers.
 type Config struct {
 	Servers *servers.Manager
+	// Saver, when set, lets ToDisk save a running server around a
+	// synchronization. Without it ToDisk needs a stopped server.
+	Saver Saver
 }
 
 // Manager manages the worlds of the servers of one storage root.
 type Manager struct {
 	cfg Config
 	ops fsOps
+	// ramCheck proves a path is on a RAM-backed filesystem and free reports
+	// the space left on a filesystem; tests replace them.
+	ramCheck func(path string) error
+	free     func(path string) (uint64, error)
 }
 
 // New returns a Manager.
@@ -75,7 +83,17 @@ func New(cfg Config) (*Manager, error) {
 	if cfg.Servers == nil {
 		return nil, errors.New("worlds: a server manager is required")
 	}
-	return &Manager{cfg: cfg, ops: osOps{}}, nil
+	m := &Manager{cfg: cfg, ops: osOps{}, free: freeBytes}
+	m.ramCheck = func(path string) error { return checkRAMBacked(path, execProgram) }
+	return m, nil
+}
+
+// WithSaver returns a manager that also saves running servers, as ToDisk
+// needs.
+func (m *Manager) WithSaver(c Saver) *Manager {
+	cp := *m
+	cp.cfg.Saver = c
+	return &cp
 }
 
 // World is one world directory of a server.
@@ -387,4 +405,8 @@ func (m *Manager) HasRAMCopy(s *legacyconf.ServerSettings, w World) bool {
 	}
 	_, err := os.Stat(filepath.Join(root, s.Name, w.Name))
 	return err == nil
+}
+
+func execProgram(ctx context.Context, name string, args ...string) ([]byte, error) {
+	return exec.CommandContext(ctx, name, args...).Output()
 }
