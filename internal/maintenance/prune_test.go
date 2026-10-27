@@ -391,3 +391,24 @@ func TestPruneReportsAFileItCannotRemoveAndContinues(t *testing.T) {
 		t.Error("the failure stopped the other categories")
 	}
 }
+
+// A root named through a link, one that does not exist yet, is still seen to
+// lie inside another root (macOS reaches /tmp and /var through links).
+func TestCheckRootsSeesOverlapThroughALink(t *testing.T) {
+	base := t.TempDir()
+	real := filepath.Join(base, "real", "servers")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(filepath.Join(base, "real"), link); err != nil {
+		t.Fatal(err)
+	}
+	err := checkRoots(map[string]string{"SERVER_STORAGE_PATH": real, "LOG_ARCHIVE_PATH": filepath.Join(link, "servers", "logs")})
+	if !errors.Is(err, ErrUnsafeRoot) || !strings.Contains(err.Error(), "overlap") {
+		t.Fatalf("err = %v, want an overlap refusal", err)
+	}
+	if err := checkRoots(map[string]string{"SERVER_STORAGE_PATH": real, "LOG_ARCHIVE_PATH": filepath.Join(link, "logs")}); err != nil {
+		t.Fatalf("separate roots refused: %v", err)
+	}
+}

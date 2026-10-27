@@ -181,21 +181,36 @@ func checkRoots(named map[string]string) error {
 		case !info.IsDir():
 			return fmt.Errorf("%w: %s %s is not a directory", ErrUnsafeRoot, n, p)
 		}
-		// Compare real locations: a parent that is a link cannot hide an
-		// overlap.
-		if real, err := filepath.EvalSymlinks(p); err == nil {
-			named[n] = real
-		}
+	}
+	// Compare real locations: a link in a parent cannot hide an overlap, and
+	// a root that does not exist yet is placed by its nearest existing
+	// ancestor (macOS's /var is a link to /private/var).
+	real := map[string]string{}
+	for _, n := range names {
+		real[n] = realPath(named[n])
 	}
 	for i, a := range names {
 		for _, b := range names[i+1:] {
-			pa, pb := named[a], named[b]
+			pa, pb := real[a], real[b]
 			if overlaps(pa, pb) {
 				return fmt.Errorf("%w: %s %s and %s %s overlap; each must be its own directory", ErrUnsafeRoot, a, pa, b, pb)
 			}
 		}
 	}
 	return nil
+}
+
+// realPath resolves the symbolic links in the part of path that exists and
+// appends the rest unchanged.
+func realPath(path string) string {
+	if r, err := filepath.EvalSymlinks(path); err == nil {
+		return r
+	}
+	parent := filepath.Dir(path)
+	if parent == path {
+		return path
+	}
+	return filepath.Join(realPath(parent), filepath.Base(path))
 }
 
 func overlaps(a, b string) bool {
