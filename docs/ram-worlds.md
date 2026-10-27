@@ -89,7 +89,10 @@ RAM copy.
   copying.
 * Each RAM copy records, in `.msm-ram.json` inside it, what both sides looked
   like when they last matched (name, type, size, permission and modification
-  time of every entry; no contents are read). **RAM is written to disk only if
+  time of every entry; no contents are read). Each side is compared only with
+  its own earlier value, at full timestamp precision; a copy is verified with
+  whole-second times, because a macOS RAM disk (HFS+) keeps no fractions of a
+  second. **RAM is written to disk only if
   the disk copy has not changed since**, and **the disk copy replaces the RAM
   copy only if the RAM copy has not changed since**. So stale RAM data never
   overwrites a newer world on disk (for example after you restored a backup),

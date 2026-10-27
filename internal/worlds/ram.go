@@ -274,7 +274,7 @@ func (r *ramRun) seed(ctx context.Context, w World) error {
 		return fail(fmt.Errorf("%s changed while it was being copied", w.Dir))
 	}
 	ram, err := scanTree(stage, nil)
-	if err != nil || ram.Fingerprint != disk.Fingerprint {
+	if err != nil || ram.Coarse != disk.Coarse {
 		return fail(errors.New("the copy does not match the original"))
 	}
 	if err := writeManifest(stage, ramManifest{Server: r.l.s.Name, World: w.Name,
@@ -403,7 +403,7 @@ func (r *ramRun) toDisk(ctx context.Context, w World, live bool, out Output) (bo
 		return fail(fmt.Errorf("%s changed while it was being copied", cp))
 	}
 	staged, err := scanTree(stage, map[string]bool{r.l.flag: true})
-	if err != nil || staged.Fingerprint != ram.Fingerprint {
+	if err != nil || staged.Coarse != ram.Coarse {
 		return fail(errors.New("the copy does not match the RAM copy"))
 	}
 	if err := r.publish(stage, w.Dir, suffix); err != nil {

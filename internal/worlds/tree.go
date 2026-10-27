@@ -239,6 +239,12 @@ type treeInfo struct {
 	// Fingerprint changes when a name, type, size, permission, modification
 	// time or link target in the tree does.
 	Fingerprint string
+	// Coarse is the same with modification times in whole seconds. A copy
+	// on a filesystem with coarser timestamps (HFS+ stores seconds) has a
+	// different Fingerprint from its original, but the same Coarse one, so
+	// Coarse verifies a copy while Fingerprint, compared with the same
+	// filesystem's earlier value, detects change at full precision.
+	Coarse string
 	// Bytes is the total size of the regular files.
 	Bytes int64
 }
@@ -248,7 +254,7 @@ type treeInfo struct {
 // change when a file is added, which the entry itself already records.
 // Symbolic links are described, never followed.
 func scanTree(root string, skip map[string]bool) (treeInfo, error) {
-	var lines []string
+	var lines, coarse []string
 	var total int64
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -270,16 +276,20 @@ func scanTree(root string, skip map[string]bool) (treeInfo, error) {
 		}
 		switch m := info.Mode(); {
 		case m.IsDir():
-			lines = append(lines, "d\x00"+rel+"\x00"+strconv.Itoa(int(m.Perm())))
+			line := "d\x00" + rel + "\x00" + strconv.Itoa(int(m.Perm()))
+			lines, coarse = append(lines, line), append(coarse, line)
 		case m.IsRegular():
 			total += info.Size()
-			lines = append(lines, "f\x00"+rel+"\x00"+strconv.Itoa(int(m.Perm()))+"\x00"+strconv.FormatInt(info.Size(), 10)+"\x00"+strconv.FormatInt(info.ModTime().UnixNano(), 10))
+			head := "f\x00" + rel + "\x00" + strconv.Itoa(int(m.Perm())) + "\x00" + strconv.FormatInt(info.Size(), 10) + "\x00"
+			lines = append(lines, head+strconv.FormatInt(info.ModTime().UnixNano(), 10))
+			coarse = append(coarse, head+strconv.FormatInt(info.ModTime().Unix(), 10))
 		case m&fs.ModeSymlink != 0:
 			target, err := os.Readlink(path)
 			if err != nil {
 				return err
 			}
-			lines = append(lines, "l\x00"+rel+"\x00"+target)
+			line := "l\x00" + rel + "\x00" + target
+			lines, coarse = append(lines, line), append(coarse, line)
 		default:
 			return fmt.Errorf("%s is a %s, which cannot be copied", path, fileKind(m))
 		}
@@ -288,9 +298,12 @@ func scanTree(root string, skip map[string]bool) (treeInfo, error) {
 	if err != nil {
 		return treeInfo{}, err
 	}
-	sort.Strings(lines)
-	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
-	return treeInfo{Fingerprint: hex.EncodeToString(sum[:]), Bytes: total}, nil
+	hash := func(l []string) string {
+		sort.Strings(l)
+		sum := sha256.Sum256([]byte(strings.Join(l, "\n")))
+		return hex.EncodeToString(sum[:])
+	}
+	return treeInfo{Fingerprint: hash(lines), Coarse: hash(coarse), Bytes: total}, nil
 }
 
 // isNoSpace reports whether err means a filesystem is full.

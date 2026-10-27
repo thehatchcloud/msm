@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -19,6 +20,9 @@ import (
 // (CI) turns a machine without one into a failure.
 func (e *env) withRAM(t *testing.T) string {
 	t.Helper()
+	if runtime.GOOS != "linux" {
+		t.Skip("this case uses /dev/shm; the worlds package tests a real RAM volume on every platform")
+	}
 	var st unix.Statfs_t
 	if err := unix.Statfs("/dev/shm", &st); err != nil || int64(st.Type) != 0x01021994 {
 		if os.Getenv("MSM_REQUIRE_RAM") == "1" {

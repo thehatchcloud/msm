@@ -945,7 +945,7 @@ func TestCopyWorld(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Fingerprint != b.Fingerprint || a.Bytes != b.Bytes {
+	if a.Coarse != b.Coarse || a.Bytes != b.Bytes {
 		t.Errorf("a copy does not fingerprint like its original")
 	}
 	bump(t, filepath.Join(dst, "level.dat"), "different")
@@ -1027,5 +1027,42 @@ image-type      : read/write disk image
 		if got := ramDeviceListed(info, dev); got != want {
 			t.Errorf("ramDeviceListed(%s) = %v, want %v", dev, got, want)
 		}
+	}
+}
+
+// A filesystem with whole-second timestamps (HFS+, the usual macOS RAM disk
+// format) holds a faithful copy whose times differ from the original's
+// nanoseconds: Coarse still matches, so the copy verifies, while change
+// detection on each side keeps its full precision.
+func TestCoarseFingerprintToleratesSecondTimestamps(t *testing.T) {
+	src := world(t, t.TempDir(), "w")
+	when := time.Unix(1_700_000_000, 987_654_321)
+	if err := os.Chtimes(filepath.Join(src, "level.dat"), when, when); err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(t.TempDir(), "copy")
+	if err := copyWorld(context.Background(), src, dst, copyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := scanTree(src, nil)
+	whole := time.Unix(when.Unix(), 0)
+	if err := os.Chtimes(filepath.Join(dst, "level.dat"), whole, whole); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := scanTree(dst, nil)
+	if a.Fingerprint == b.Fingerprint {
+		t.Fatalf("test setup: the fingerprints should differ at nanosecond precision")
+	}
+	if a.Coarse != b.Coarse {
+		t.Errorf("a copy with whole-second times does not verify")
+	}
+	// A sub-second change on one side is still seen by that side's own
+	// fingerprint.
+	later := whole.Add(500 * time.Millisecond)
+	if err := os.Chtimes(filepath.Join(dst, "level.dat"), later, later); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := scanTree(dst, nil); c.Fingerprint == b.Fingerprint {
+		t.Errorf("a sub-second change went unnoticed on its own side")
 	}
 }
