@@ -1023,7 +1023,7 @@ func TestRAMWorlds(t *testing.T) {
 		e.con.running = true
 		var order []string
 		e.con.hook = func(_ context.Context, c string) { order = append(order, c) }
-		e.bm.cfg.SyncRAM = func(context.Context, *legacyconf.ServerSettings) error {
+		e.bm.cfg.SyncRAM = func(context.Context, *legacyconf.ServerSettings, bool) error {
 			order = append(order, "ram-sync")
 			return nil
 		}
@@ -1032,6 +1032,28 @@ func TestRAMWorlds(t *testing.T) {
 		}
 		if got := strings.Join(order, ","); !strings.Contains(got, "SAVE_ALL,ram-sync,SAVE_ON") {
 			t.Errorf("order = %s", got)
+		}
+	})
+	t.Run("stopped server is synced first", func(t *testing.T) {
+		e, _ := setup(t)
+		var lives []bool
+		e.bm.cfg.SyncRAM = func(_ context.Context, _ *legacyconf.ServerSettings, live bool) error {
+			lives = append(lives, live)
+			return nil
+		}
+		if err := e.bm.Worlds(context.Background(), "srv", e.output()); err != nil {
+			t.Fatal(err)
+		}
+		if len(lives) != 1 || lives[0] {
+			t.Errorf("SyncRAM live flags = %v, want one call with live=false", lives)
+		}
+	})
+	t.Run("a sync that fails stops the backup", func(t *testing.T) {
+		e, _ := setup(t)
+		e.bm.cfg.SyncRAM = func(context.Context, *legacyconf.ServerSettings, bool) error { return errors.New("disk full") }
+		err := e.bm.Worlds(context.Background(), "srv", e.output())
+		if err == nil || !strings.Contains(err.Error(), "write RAM worlds to disk") {
+			t.Fatalf("err = %v", err)
 		}
 	})
 }

@@ -495,7 +495,7 @@ func (m *Manager) halt(ctx context.Context, s *server, st screen.Status) error {
 	switch {
 	case err == nil:
 		s.printf("Server %q stopped.", s.name)
-		return nil
+		return m.syncRAMWorlds(ctx, s)
 	case ctx.Err() != nil:
 		return fmt.Errorf("%w while waiting for server %q to stop; the stop command was sent", ErrInterrupted, s.name)
 	case errors.Is(err, screen.ErrStopTimeout):
@@ -503,6 +503,20 @@ func (m *Manager) halt(ctx context.Context, s *server, st screen.Status) error {
 	default:
 		return fmt.Errorf("stop server %q: %w", s.name, err)
 	}
+}
+
+// syncRAMWorlds writes the server's RAM worlds to disk once it has stopped,
+// so the durable copy is current before anything else touches it. A failure
+// leaves the RAM copies intact and is reported: the server is stopped, but
+// the stop did not make its worlds durable.
+func (m *Manager) syncRAMWorlds(ctx context.Context, s *server) error {
+	if m.cfg.Worlds == nil {
+		return nil
+	}
+	if err := m.cfg.Worlds.SyncToDisk(ctx, s.settings, false, worlds.Output{Out: s.out, Err: s.out}); err != nil {
+		return fmt.Errorf("server %q stopped, but its RAM worlds were not all written to disk: %w; run \"worlds todisk\" once the cause is fixed", s.name, err)
+	}
+	return nil
 }
 
 // saveAll sends save-all and waits briefly for the profile's confirmation,

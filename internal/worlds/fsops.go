@@ -1,6 +1,7 @@
 package worlds
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -30,6 +31,12 @@ type fsOps interface {
 	Symlinkat(target string, dirfd int, name string) error
 	Renameat(dirfd int, from, to string) error
 	Unlinkat(dirfd int, name string) error
+	// CopyWorld copies the tree src to the new path dst for the RAM
+	// commands: flushed, through descriptors that follow no link.
+	CopyWorld(ctx context.Context, src, dst string, opt copyOptions) error
+	// Exchange swaps two directories in one step; ok is false when the
+	// filesystem cannot.
+	Exchange(a, b string) (ok bool, err error)
 }
 
 type osOps struct{}
@@ -54,6 +61,12 @@ func (osOps) Renameat(dirfd int, from, to string) error {
 }
 
 func (osOps) Unlinkat(dirfd int, name string) error { return unix.Unlinkat(dirfd, name, 0) }
+
+func (osOps) CopyWorld(ctx context.Context, src, dst string, opt copyOptions) error {
+	return copyWorld(ctx, src, dst, opt)
+}
+
+func (osOps) Exchange(a, b string) (bool, error) { return exchange(a, b) }
 
 func (osOps) CopyTree(src, dst string) error {
 	info, err := os.Lstat(src)

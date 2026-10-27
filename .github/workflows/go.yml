@@ -54,6 +54,9 @@ jobs:
       - name: Record screen version
         run: |
           echo "MSM_REQUIRE_SCREEN=1" >> "$GITHUB_ENV"
+          # The RAM world tests prepare a real RAM volume (tmpfs on Linux, an
+          # hdiutil ram:// volume on macOS); not having one is a failure.
+          echo "MSM_REQUIRE_RAM=1" >> "$GITHUB_ENV"
           "$MSM_TEST_SCREEN" -v || true
       # The backup acceptance test runs WorldEdit's own snapshot lookup over
       # the archives. The harness fetches pinned WorldEdit sources and

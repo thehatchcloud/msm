@@ -103,10 +103,11 @@ type Config struct {
 	// AllowExternal permits followed links to targets outside the server
 	// after the administrator has reviewed them.
 	AllowExternal bool
-	// SyncRAM, when set, writes a server's RAM worlds to disk. Without it
-	// a backup refuses a server whose world lives in RAM, since the copy
-	// on disk may be stale.
-	SyncRAM func(ctx context.Context, set *legacyconf.ServerSettings) error
+	// SyncRAM, when set, writes a server's RAM worlds to disk; live is
+	// whether the server is running with saving off. Without it a backup
+	// refuses a server whose world lives in RAM, since the copy on disk may
+	// be stale.
+	SyncRAM func(ctx context.Context, set *legacyconf.ServerSettings, live bool) error
 	// Runner runs rdiff-backup; nil means process.ExecRunner.
 	Runner process.Runner
 	// LookPath finds a program in PATH; nil means exec.LookPath.
@@ -318,6 +319,13 @@ func (m *Manager) run(ctx context.Context, name string, md mode, out Output) (er
 	}
 	if !running {
 		printf(out.Out, "Server %q is stopped; its files cannot change during the backup.", name)
+		if j.ramSync && m.cfg.SyncRAM != nil {
+			// A stop writes the RAM copies to disk; one that could not is
+			// retried so the backup holds the newest data.
+			if err := m.cfg.SyncRAM(ctx, set, false); err != nil {
+				return fmt.Errorf("write RAM worlds to disk: %w", err)
+			}
+		}
 		return m.finish(ctx, j, nil, "", out)
 	}
 	return m.live(ctx, j, out)
@@ -553,7 +561,7 @@ func (m *Manager) live(ctx context.Context, j *job, out Output) (err error) {
 		return fmt.Errorf("save the server before the backup: %w", err)
 	}
 	if m.cfg.SyncRAM != nil {
-		if err := m.cfg.SyncRAM(window, set); err != nil {
+		if err := m.cfg.SyncRAM(window, set, true); err != nil {
 			return fmt.Errorf("write RAM worlds to disk: %w", err)
 		}
 	}

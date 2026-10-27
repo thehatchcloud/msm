@@ -53,8 +53,9 @@ func (m *Manager) Load(ctx context.Context, name string, out Output) error {
 
 // EnsureLinks makes the symbolic links in the server directory match the
 // worlds: an active world is linked under its own name to its directory (or
-// to its RAM copy, when it is flagged for RAM and that copy exists), and the
-// link of an inactive world is removed. It also creates the directory for the
+// to its RAM copy, when it is flagged for RAM, RAM worlds are usable and the
+// copy was made or checked now), and the link of an inactive world is
+// removed. It also creates the directory for the
 // server's level-name in active storage, so a new world is generated there
 // and not in the server directory.
 //
@@ -96,7 +97,7 @@ func (m *Manager) EnsureLinks(ctx context.Context, s *legacyconf.ServerSettings,
 	}
 
 	rep := &LinkReport{}
-	ram := m.ramRoot()
+	var served ramServed
 	for _, w := range l.worlds {
 		if err := ctx.Err(); err != nil {
 			return rep, err
@@ -129,7 +130,10 @@ func (m *Manager) EnsureLinks(ctx context.Context, s *legacyconf.ServerSettings,
 			rep.Skipped = append(rep.Skipped, Skip{w.Name, fmt.Sprintf("%s already exists and is not a symbolic link, so it was not replaced; remove it or rename the world", link)})
 			continue
 		}
-		target := m.linkTarget(l, w, ram, out)
+		target := w.Dir
+		if w.InRAM {
+			target = m.ramTarget(ctx, &served, l, w, out)
+		}
 		if isLink {
 			cur, err := readlinkat(dirFD, w.Name)
 			if err != nil {
@@ -153,27 +157,6 @@ func (m *Manager) EnsureLinks(ctx context.Context, s *legacyconf.ServerSettings,
 	}
 	out.printf("Done.")
 	return rep, nil
-}
-
-// linkTarget is where a world's link points: its RAM copy when the world is
-// flagged for RAM, RAM worlds are configured and the copy is there, else the
-// directory on disk. A flagged world whose RAM copy is missing is linked to
-// disk, never to a path that does not exist; the RAM commands (P12) create
-// the copy and move the link.
-func (m *Manager) linkTarget(l *layout, w World, ramRoot string, out Output) string {
-	if !w.InRAM {
-		return w.Dir
-	}
-	if ramRoot == "" {
-		out.warnf("Warning: world %q is flagged to live in RAM, but RAM worlds are not enabled (RAMDISK_STORAGE_ENABLED); it is linked to its copy on disk", w.Name)
-		return w.Dir
-	}
-	copyDir := filepath.Join(ramRoot, l.s.Name, w.Name)
-	if info, err := os.Lstat(copyDir); err != nil || !info.IsDir() {
-		out.warnf("Warning: world %q is flagged to live in RAM, but %s does not exist; it is linked to its copy on disk", w.Name, copyDir)
-		return w.Dir
-	}
-	return copyDir
 }
 
 // ramRoot is RAMDISK_STORAGE_PATH when msm.conf enables RAM worlds, else "".

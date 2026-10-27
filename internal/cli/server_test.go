@@ -409,17 +409,40 @@ func TestWorldsCommands(t *testing.T) {
 		}
 	}
 	// Commands another task owns, and malformed ones, are the legacy answer.
-	for _, args := range [][]string{{"one", "worlds"}, {"one", "worlds", "list", "x"}, {"one", "worlds", "on"}, {"one", "worlds", "ram", "main"},
-		{"one", "worlds", "todisk"}, {"one", "worlds", "backup", "x"}, {"one", "backup", "x"}, {"one", "worlds", "bogus"}} {
+	for _, args := range [][]string{{"one", "worlds"}, {"one", "worlds", "list", "x"}, {"one", "worlds", "on"}, {"one", "worlds", "ram"},
+		{"one", "worlds", "todisk", "x"}, {"one", "worlds", "backup", "x"}, {"one", "backup", "x"}, {"one", "worlds", "bogus"}} {
 		code, _, errOut := f.run(t, "", args...)
 		if code != ExitError || !strings.Contains(errOut, "No such command") {
 			t.Errorf("msm %s = %d, %q; want No such command", strings.Join(args, " "), code, errOut)
 		}
 	}
 
+	// RAM worlds are off in this configuration: both commands say so.
+	code, _, errOut := f.run(t, "", "one", "worlds", "ram", "main")
+	if code != ExitError || !strings.Contains(errOut, "RAMDISK_STORAGE_ENABLED") {
+		t.Errorf("ram = %d, %q", code, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(f.root, "one", "worldstorage", "main", "inram")); err == nil {
+		t.Error("the RAM flag was set although RAM worlds are off")
+	}
+	if out := f.mustRun(t, "one", "worlds", "todisk"); !strings.Contains(out, "RAM worlds are off") {
+		t.Errorf("todisk = %q", out)
+	}
+	if out := f.mustRun(t, "all", "worlds", "todisk"); !strings.Contains(out, "one: RAM worlds are off") || !strings.Contains(out, "two: RAM worlds are off") {
+		t.Errorf("all todisk = %q", out)
+	}
+	code, _, errOut = f.run(t, "", "all", "worlds", "ram", "main")
+	if code != ExitError || !strings.Contains(errOut, "one server at a time") {
+		t.Errorf("all ram = %d, %q", code, errOut)
+	}
+	code, _, errOut = f.run(t, "", "one", "worlds", "ram", "ghost")
+	if code != ExitError || !strings.Contains(errOut, `there is no world with the name "ghost"`) {
+		t.Errorf("ram ghost = %d, %q", code, errOut)
+	}
+
 	// A server not proven stopped is refused, and nothing moves.
 	f.states["one"] = servers.Running
-	code, _, errOut := f.run(t, "", "one", "worlds", "off", "main")
+	code, _, errOut = f.run(t, "", "one", "worlds", "off", "main")
 	if code != ExitError || !strings.Contains(errOut, "running") {
 		t.Errorf("off while running = %d, %q", code, errOut)
 	}

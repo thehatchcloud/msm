@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -9,7 +10,9 @@ import (
 
 	"github.com/thehatchcloud/msm/internal/backup"
 	"github.com/thehatchcloud/msm/internal/clock"
+	"github.com/thehatchcloud/msm/internal/legacyconf"
 	"github.com/thehatchcloud/msm/internal/servers"
+	"github.com/thehatchcloud/msm/internal/worlds"
 )
 
 // hostBackup builds the backup manager over the host's servers, worlds and
@@ -33,7 +36,10 @@ func hostBackup(d deps) func(io.Writer, lifecycleOptions) (*backup.Manager, erro
 			return nil, err
 		}
 		return backup.New(backup.Config{Servers: sm, Worlds: wm, Console: cm, Clock: clock.Real{},
-			Timeout: o.backupTimeout, JarRoot: js.root, AllowExternal: o.allowExternalLinks})
+			Timeout: o.backupTimeout, JarRoot: js.root, AllowExternal: o.allowExternalLinks,
+			SyncRAM: func(ctx context.Context, set *legacyconf.ServerSettings, live bool) error {
+				return wm.SyncToDisk(ctx, set, live, worlds.Output{Out: io.Discard, Err: w})
+			}})
 	}
 }
 
