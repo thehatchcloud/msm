@@ -25,6 +25,13 @@ CI sets `GOTOOLCHAIN=local` and installs that version using `actions/setup-go`,
 so it cannot silently upgrade the compiler. All CI actions are pinned to commit
 SHAs.
 
+Locally, `make build`, `test`, `test-race` and `cover` first run `make
+check-go`, which fails with the fix if the Go in use is not that version. Either
+install it, or opt in to letting Go fetch the pinned toolchain
+(`GOTOOLCHAIN=auto make test`; `auto` is Go's default from 1.21, so this only
+matters if your environment sets `local` or `off`). The Makefile does not set
+`GOTOOLCHAIN` itself, so your choice and CI's `local` both stand.
+
 The CLI uses [Cobra](https://github.com/spf13/cobra) v1.10.2 and configuration
 uses [Viper](https://github.com/spf13/viper) v1.21.0. Dependencies are pinned in
 `go.mod` and verified by `go.sum`. `govulncheck` is a separate, version-pinned
