@@ -1,0 +1,30 @@
+# Runs one MSM maintenance job: msm-maintenance@backup.service runs
+# "msm maintenance run backup". The timers in this directory start the jobs.
+#
+# Nothing here is installed by MSM. See docs/maintenance.md for the opt-in
+# steps. Edit User, Group, MSM_CONF and the path of the msm binary to match
+# your installation; User must be the manager user (USERNAME in msm.conf) or
+# root, exactly as for a command typed by hand.
+
+[Unit]
+Description=Minecraft Server Manager maintenance: %i
+Documentation=https://github.com/thehatchcloud/msm/blob/master/docs/maintenance.md
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=minecraft
+Group=minecraft
+# Nothing is inherited from a login shell: the environment is exactly this.
+Environment=MSM_CONF=/etc/msm.conf
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=LANG=C.UTF-8
+WorkingDirectory=/
+UMask=0077
+ExecStart=/usr/local/bin/msm maintenance run %i
+# msm stops each job at its own --job-timeout (backup 4h, prune 1h, todisk
+# 20m, recover 30m, logroll 15m); this is the backstop that kills the process
+# if msm itself cannot.
+TimeoutStartSec=6h
+# A second start of a job that is still running is skipped by systemd, and
+# by msm's own job lock if the job was started some other way.

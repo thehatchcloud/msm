@@ -45,7 +45,7 @@ separate and runs only on disposable Linux CI runners.
   `whitelist|wl`.
 - `<name>` permits ASCII letters, digits, `_`, and `-`. It rejects `start`,
   `stop`, `restart`, `version`, `server`, `jargroup`, `all`, `config`,
-  `update`, `help`, and names beginning with `--`.
+  `update`, `help`, `maintenance`, and names beginning with `--`.
 - `<name:server>` accepts the special target `all`. `<name:world>` accepts
   `all` only when the server target is also `all`; a single server may also
   target all of its worlds through the dispatcher.

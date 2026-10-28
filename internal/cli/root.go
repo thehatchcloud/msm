@@ -70,6 +70,6 @@ func newRootCommand(info buildinfo.Info, d deps) (*cobra.Command, error) {
 		"let a complete backup with COMPLETE_BACKUP_FOLLOW_SYMLINKS=true include link targets outside the server, after you have reviewed the list it prints")
 	root.AddCommand(newVersionCommand(info), newServerCommand(d),
 		newGlobalCommand(d, lifecycle.VerbStart), newGlobalCommand(d, lifecycle.VerbStop),
-		newGlobalCommand(d, lifecycle.VerbRestart), newJargroupCommand(d))
+		newGlobalCommand(d, lifecycle.VerbRestart), newJargroupCommand(d), newMaintenanceCommand(d))
 	return root, nil
 }

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Runs "msm maintenance run todisk" as a launchd daemon. Nothing is installed by
+  MSM; see docs/maintenance.md for the opt-in steps. Copy it to
+  /Library/LaunchDaemons/, rename the label to one of your own, edit UserName
+  (the manager user, USERNAME in msm.conf, or root), the path of the msm
+  binary and MSM_CONF, then:
+    sudo chown root:wheel /Library/LaunchDaemons/<file>.plist
+    sudo launchctl bootstrap system /Library/LaunchDaemons/<file>.plist
+  launchd does not start a job again while it is still running; msm's own
+  job lock skips an overlapping run started any other way.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.example.msm.todisk</string>
+	<key>UserName</key>
+	<string>minecraft</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/bin/msm</string>
+		<string>maintenance</string>
+		<string>run</string>
+		<string>todisk</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>MSM_CONF</key>
+		<string>/usr/local/etc/msm.conf</string>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+		<key>LANG</key>
+		<string>C.UTF-8</string>
+	</dict>
+	<key>WorkingDirectory</key>
+	<string>/</string>
+	<key>Umask</key>
+	<integer>63</integer>
+	<key>StartInterval</key>
+	<integer>1800</integer>
+	<key>StandardOutPath</key>
+	<string>/var/log/msm-maintenance-todisk.log</string>
+	<key>StandardErrorPath</key>
+	<string>/var/log/msm-maintenance-todisk.log</string>
+	<key>ProcessType</key>
+	<string>Background</string>
+</dict>
+</plist>

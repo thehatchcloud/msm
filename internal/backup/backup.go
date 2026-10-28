@@ -69,6 +69,7 @@ const (
 
 	defaultWorldArchivePath  = "/opt/msm/archives/worlds"
 	defaultServerArchivePath = "/opt/msm/archives/backups"
+	defaultLogArchivePath    = "/opt/msm/archives/logs"
 	defaultRdiffPath         = "/opt/msm/rdiff-backup/worlds"
 	defaultRsyncPath         = "/opt/msm/rsync/worlds"
 )
@@ -227,15 +228,39 @@ func (m *Manager) global(name, def string) string {
 // beside the servers, so a rootless installation keeps its backups with its
 // data.
 func (m *Manager) archiveRoot(setting, def, rootless string) (string, error) {
+	return archiveRoot(m.cfg.Servers, setting, def, rootless)
+}
+
+func archiveRoot(sm *servers.Manager, setting, def, rootless string) (string, error) {
 	p := def
-	if m.cfg.Servers.Global() == nil {
+	if sm.Global() == nil {
 		p = rootless
 	}
-	p = m.global(setting, p)
+	if g := sm.Global(); g != nil {
+		if v, ok := g.Lookup(setting); ok {
+			p = v
+		}
+	}
 	if err := safepath.ValidateConfiguredRoot(p); err != nil {
 		return "", fmt.Errorf("%w: %s: %v", ErrSettings, setting, err)
 	}
 	return p, nil
+}
+
+// ArchiveRoot is the directory WORLD_ARCHIVE_PATH, BACKUP_ARCHIVE_PATH or
+// LOG_ARCHIVE_PATH names, with the defaults backups use, so retention and
+// log rolling look where backups and rolled logs are written.
+func ArchiveRoot(sm *servers.Manager, setting string) (string, error) {
+	parent := filepath.Dir(sm.Root())
+	switch setting {
+	case "WORLD_ARCHIVE_PATH":
+		return archiveRoot(sm, setting, defaultWorldArchivePath, filepath.Join(parent, "archives", "worlds"))
+	case "BACKUP_ARCHIVE_PATH":
+		return archiveRoot(sm, setting, defaultServerArchivePath, filepath.Join(parent, "archives", "backups"))
+	case "LOG_ARCHIVE_PATH":
+		return archiveRoot(sm, setting, defaultLogArchivePath, filepath.Join(parent, "archives", "logs"))
+	}
+	return "", fmt.Errorf("backup: %s is not an archive directory setting", setting)
 }
 
 func (m *Manager) bases(set *legacyconf.ServerSettings) (worldsBase, serverBase string, err error) {

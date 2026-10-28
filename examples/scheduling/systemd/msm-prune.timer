@@ -1,0 +1,17 @@
+# Prunes old logs and backups at 05:10 (cron/msm: the four find lines at 05:10, :12, :14 and :16).
+# Starts msm-maintenance@prune.service. Nothing is installed by MSM; see
+# docs/maintenance.md.
+
+[Unit]
+Description=MSM maintenance timer: prune
+
+[Timer]
+OnCalendar=*-*-* 05:10:00
+AccuracySec=1s
+# A run missed while the machine was off is not made up at boot: a backup or
+# a restart in the middle of startup is not wanted.
+Persistent=false
+Unit=msm-maintenance@prune.service
+
+[Install]
+WantedBy=timers.target

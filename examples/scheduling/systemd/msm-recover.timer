@@ -1,0 +1,17 @@
+# Starts active servers that stopped, every hour (cron/msm: @hourly).
+# Starts msm-maintenance@recover.service. Nothing is installed by MSM; see
+# docs/maintenance.md.
+
+[Unit]
+Description=MSM maintenance timer: recover
+
+[Timer]
+OnCalendar=hourly
+AccuracySec=1s
+# A run missed while the machine was off is not made up at boot: a backup or
+# a restart in the middle of startup is not wanted.
+Persistent=false
+Unit=msm-maintenance@recover.service
+
+[Install]
+WantedBy=timers.target

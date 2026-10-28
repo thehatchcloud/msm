@@ -72,7 +72,8 @@ msm all worlds todisk             the same for every server (cron runs this)
   stopped server, before copying), so the backup holds the newest data. If the
   write fails the backup fails.
 * **Periodic sync** is `msm all worlds todisk`; `cron/msm` runs it every 30
-  minutes. For a running server it turns saving off, saves, writes, and turns
+  minutes (see [maintenance.md](maintenance.md) for the systemd, cron and
+  launchd examples). For a running server it turns saving off, saves, writes, and turns
   saving on again, also on an error or Ctrl+C.
 
 All of them hold the server's lock, so shutdown, a backup and a cron sync
