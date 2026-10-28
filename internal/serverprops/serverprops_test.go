@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func TestGetQuotedAndUnquotedValues(t *testing.T) {
@@ -260,5 +262,49 @@ colon:ignored
 	}
 	if !strings.Contains(string(doc.Bytes()), "motd=C:\\new\\u0041\n") {
 		t.Fatalf("value was not written literally: %q", doc.Bytes())
+	}
+}
+
+func TestSetUpdatesEveryDuplicateSoTheLastCannotKeepOverriding(t *testing.T) {
+	doc := Parse([]byte("# c\nmotd=one\nlevel-name=world\nmotd=two\n"))
+	if err := doc.Set("motd", "new"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(doc.Bytes()), "# c\nmotd=new\nlevel-name=world\nmotd=new\n"; got != want {
+		t.Fatalf("Bytes() = %q, want %q", got, want)
+	}
+	if v, _ := doc.GetExact("motd"); v != "new" {
+		t.Fatalf("GetExact = %q", v)
+	}
+}
+
+func TestGetExactIsCaseSensitiveAndLastWins(t *testing.T) {
+	doc := Parse([]byte("Motd=upper\nmotd=a\nmotd=\"b\"\n"))
+	if v, ok := doc.GetExact("motd"); !ok || v != "b" {
+		t.Fatalf("GetExact(motd) = %q, %v", v, ok)
+	}
+	if v, ok := doc.GetExact("MOTD"); ok {
+		t.Fatalf("GetExact(MOTD) = %q, want absent", v)
+	}
+}
+
+func TestLoadRefusesWhatIsNotARegularFile(t *testing.T) {
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "server.properties")
+	if err := syscall.Mkfifo(fifo, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { _, err := Load(fifo); done <- err }()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Fatalf("Load(fifo) = %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Load waited on a FIFO")
+	}
+	if _, err := Load(dir); err == nil {
+		t.Fatal("Load(directory) must fail")
 	}
 }

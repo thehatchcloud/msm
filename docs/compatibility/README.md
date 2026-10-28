@@ -21,6 +21,7 @@ Go implementation must intentionally change.
 | `compatibility/commands.tsv` | Every one of the 69 registered command signatures, aliases, handler, owning task, and future contract-test ID |
 | `compatibility/settings.tsv` | Every registered global setting and per-server setting, including defaults and empty profile-derived values |
 | `compatibility/surfaces.tsv` | Filesystem conventions, state flags, version profiles, maintenance jobs, service integration, completion, prompts, and exit behavior |
+| `compatibility/parity.tsv` | The parity matrix: for every row above, whether the Go port implements it (with the code and tests), deviates by a reviewed entry, or defers it to a later task; see [parity.md](parity.md) |
 | `compatibility/fixtures/minimal/` | Inert example installation copied into a temporary directory by the verifier |
 
 Run `go test ./compatibility` after changing a legacy source surface. The tests
@@ -167,12 +168,12 @@ it does not claim that the command behavior itself has been ported.
 
 | Topic | Source behavior | Public/help behavior | Go-port decision |
 |---|---|---|---|
-| `all` targeting | Dispatcher permits `all` in every `<name:server>` signature | Cron uses `all`; help emphasizes global lifecycle and individual server syntax | Preserve safe bulk operations and document them consistently in P14 |
+| `all` targeting | Dispatcher permits `all` in every `<name:server>` signature | Cron uses `all`; help emphasizes global lifecycle and individual server syntax | Preserved for every server command, documented in [cli.md](../cli.md#targets) and `msm help targets`, and golden-tested for each (P14); `console` and `cmdlog` need one server, `worlds ram` changes one server's world at a time |
 | Global stop intent | Does not remove active marker | Public global docs say intent is unchanged | Preserve |
 | Per-server stop intent | Removes active marker before stopping | Public server docs describe inactive state | Preserve |
 | `server delete` while running | Prompts, then stops and deletes | Help only says delete | Keep explicit prompt, add `--yes`; preview target; refuse a server not proven stopped (DEV-018, P05) |
 | `jargroup rename` | Does not update server JAR symlinks; source contains TODO | Help implies rename succeeds | Rename re-points every server using the group, rolling back on failure; delete refuses a group in use (DEV-009, DEV-020, P07) |
-| Unknown command status | Prints a message and normally exits zero | No status documented | Return nonzero usage status |
+| Unknown command status | Prints a message and normally exits zero | No status documented | Return nonzero usage status (2); the statuses are named in [cli.md](../cli.md#exit-statuses) (DEV-004) |
 | Update transport | Downloads unverified files with TLS checks disabled | Described simply as update | Replace with verified release artifacts |
 | Current game syntax | Profiles stop at Minecraft 1.7-era parsing | Project description implies general Minecraft support | Retain legacy profiles and add an explicitly tested modern profile |
 | Properties filename | `init/msm` registers `SERVER_PROPERTIES` | `msm.conf` exposes `DEFAULT_PROPERTIES_PATH`, which the source never reads | Import either spelling with a warning; write one canonical Go setting in P03 |

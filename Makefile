@@ -34,6 +34,15 @@ check-go: ## Fail with the fix if the Go in use is not the version go.mod pins
 build: check-go ## Build bin/msm with the version and commit stamped in
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/msm ./cmd/msm
 
+.PHONY: completions
+completions: check-go ## Regenerate completions/ from the binary
+	$(GO) run ./cmd/msm completion bash > completions/msm.bash
+	$(GO) run ./cmd/msm completion zsh > completions/_msm
+
+.PHONY: golden
+golden: check-go ## Regenerate internal/cli/testdata/commands.golden after a reviewed CLI change
+	CGO_ENABLED=0 $(GO) test -count=1 ./internal/cli -run TestGoldenCommands -update
+
 .PHONY: cross
 cross: ## Build dist/msm-<os>-<arch> for every supported platform
 	@mkdir -p $(DIST_DIR)

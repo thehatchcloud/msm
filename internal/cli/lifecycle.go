@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -15,7 +14,6 @@ import (
 	"github.com/thehatchcloud/msm/internal/identity"
 	"github.com/thehatchcloud/msm/internal/lifecycle"
 	"github.com/thehatchcloud/msm/internal/screen"
-	"github.com/thehatchcloud/msm/internal/servers"
 )
 
 // lifecycleOptions are the flags every lifecycle command takes.
@@ -35,13 +33,13 @@ func (o *lifecycleOptions) register(cmd *cobra.Command) {
 
 func (o *lifecycleOptions) validate() error {
 	if o.backupTimeout < 0 {
-		return errors.New("--backup-timeout must not be negative")
+		return usageError{errors.New("--backup-timeout must not be negative")}
 	}
 	if o.timeout < 0 {
-		return errors.New("--timeout must not be negative")
+		return usageError{errors.New("--timeout must not be negative")}
 	}
 	if o.jobs < 1 {
-		return errors.New("--jobs must be at least 1")
+		return usageError{errors.New("--jobs must be at least 1")}
 	}
 	return nil
 }
@@ -170,8 +168,7 @@ var serverVerbs = map[string]lifecycle.Verb{
 // runServerCommand is the server-first grammar the root command accepts:
 // msm <server> start|stop [now]|restart [now]|status, with "all" as the
 // server applying the per-server command to every server; the console and
-// player commands (console.go) and jar. P14 extends this dispatcher to the
-// remaining server commands.
+// player commands (console.go), jar, config, backups, logroll and worlds.
 func runServerCommand(cmd *cobra.Command, d deps, o lifecycleOptions, args []string) error {
 	// Anything that matches no command gets the legacy answer, as
 	// call_command gives it.
@@ -181,6 +178,9 @@ func runServerCommand(cmd *cobra.Command, d deps, o lifecycleOptions, args []str
 	target, word := args[0], args[1]
 	if word == "jar" {
 		return runJarCommand(cmd, d, target, args[2:])
+	}
+	if word == "config" {
+		return runServerConfig(cmd, d, target, args[2:])
 	}
 	if word == "backup" {
 		if len(args) != 2 {
@@ -218,6 +218,9 @@ func runServerCommand(cmd *cobra.Command, d deps, o lifecycleOptions, args []str
 	if err := o.validate(); err != nil {
 		return err
 	}
+	if verb == lifecycle.VerbStatus && jsonRequested(cmd) {
+		return runStatusJSON(cmd, d, target)
+	}
 	m, err := d.lifecycle(cmd.ErrOrStderr(), o)
 	if err != nil {
 		return err
@@ -236,8 +239,5 @@ func runServerCommand(cmd *cobra.Command, d deps, o lifecycleOptions, args []str
 	default:
 		err = m.Status(ctx, target, out)
 	}
-	if errors.Is(err, servers.ErrNotFound) || errors.Is(err, servers.ErrInvalidName) {
-		return fmt.Errorf("there is no server with the name %q: %w", target, err)
-	}
-	return err
+	return noSuchServer(target, err)
 }

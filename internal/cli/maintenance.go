@@ -173,7 +173,7 @@ commands wait for the server locks they need.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			job, err := maintenance.ParseJob(args[0])
 			if err != nil {
-				return err
+				return usageError{err}
 			}
 			if err := o.validate(); err != nil {
 				return err

@@ -99,7 +99,7 @@ type RunConfig struct {
 // with ErrTimeout so the process can exit and release it.
 func Run(ctx context.Context, cfg RunConfig, job Job, fn func(context.Context) error) error {
 	if cfg.Timeout < 0 {
-		return errors.New("maintenance: the job timeout must not be negative")
+		return fmt.Errorf("%w: the job timeout must not be negative", ErrOptions)
 	}
 	timeout := cfg.Timeout
 	if timeout == 0 {

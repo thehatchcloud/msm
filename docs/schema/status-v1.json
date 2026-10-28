@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/thehatchcloud/msm/blob/main/docs/schema/status-v1.json",
+  "title": "msm status document, schema version 1",
+  "description": "Printed by `msm <server|all> status --format json` and `msm server list --format json`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "servers"],
+  "properties": {
+    "schema_version": {
+      "description": "Incremented when a field is removed, renamed or changes meaning. Adding a field does not change it.",
+      "const": 1
+    },
+    "servers": {
+      "description": "One entry per server, sorted by name. Empty when there are no servers.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "active", "state", "ok"],
+        "properties": {
+          "name": {
+            "description": "The server's directory name.",
+            "type": "string",
+            "minLength": 1
+          },
+          "active": {
+            "description": "Whether the server is meant to be running: its active marker exists. `msm <server> start` sets it, `msm <server> stop` clears it; the global start and stop leave it alone.",
+            "type": "boolean"
+          },
+          "state": {
+            "description": "What the manager can prove about the server's process. occupied: a screen session holds the server's name but is not verifiably this server (treat it as possibly running). unknown: the sessions could not be inspected.",
+            "enum": ["running", "stopped", "occupied", "unknown"]
+          },
+          "ok": {
+            "description": "True when nothing needs attention: an active server is running, or an inactive one is stopped. False for every other combination, including occupied and unknown.",
+            "type": "boolean"
+          },
+          "detail": {
+            "description": "Why the state is occupied or unknown. Absent for running and stopped.",
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
