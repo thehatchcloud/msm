@@ -38,6 +38,11 @@ func goBuild(t *testing.T, out, version, pub string) {
 // release directory, then update an older build with the default check that
 // runs the staged program.
 func TestRealReleaseUpdatesARealProgram(t *testing.T) {
+	if raceEnabled {
+		// It compiles and links the whole program twice, which takes minutes
+		// on a CI runner under the race detector; the build runs without it.
+		t.Skip("builds the real program; covered by the non-race test run")
+	}
 	work := t.TempDir()
 	keyFile := filepath.Join(work, "release.key")
 	var out bytes.Buffer
