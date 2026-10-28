@@ -19,8 +19,19 @@ PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 help: ## List the available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-12s %s\n", $$1, $$2}'
 
+.PHONY: check-go
+check-go: ## Fail with the fix if the Go in use is not the version go.mod pins
+	@want="$$(awk '$$1 == "go" {print $$2; exit}' go.mod)"; \
+	have="$$($(GO) env GOVERSION | sed 's/^go//')"; \
+	if [ "$$have" != "$$want" ]; then \
+		echo "go.mod pins Go $$want but $(GO) is $$have (GOTOOLCHAIN=$$($(GO) env GOTOOLCHAIN))."; \
+		echo "Install $$want from https://go.dev/dl/, or let Go fetch it: GOTOOLCHAIN=auto make test"; \
+		echo "(CI uses GOTOOLCHAIN=local with that exact version installed; see docs/development.md.)"; \
+		exit 1; \
+	fi
+
 .PHONY: build
-build: ## Build bin/msm with the version and commit stamped in
+build: check-go ## Build bin/msm with the version and commit stamped in
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/msm ./cmd/msm
 
 .PHONY: cross
@@ -34,15 +45,15 @@ cross: ## Build dist/msm-<os>-<arch> for every supported platform
 	done
 
 .PHONY: test
-test: ## Run the unit tests (pure-Go build)
+test: check-go ## Run the unit tests (pure-Go build)
 	CGO_ENABLED=0 $(GO) test -count=1 ./...
 
 .PHONY: test-race
-test-race: ## Run the unit tests with the race detector (needs a C toolchain)
+test-race: check-go ## Run the unit tests with the race detector (needs a C toolchain)
 	CGO_ENABLED=1 $(GO) test -race -count=1 -timeout=3m ./...
 
 .PHONY: cover
-cover: ## Write coverage.out and print a per-function summary
+cover: check-go ## Write coverage.out and print a per-function summary
 	CGO_ENABLED=0 $(GO) test -count=1 -coverprofile=coverage.out ./...
 	$(GO) tool cover -func=coverage.out
 
