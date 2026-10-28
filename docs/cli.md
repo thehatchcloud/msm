@@ -26,7 +26,7 @@ global `msm stop` stops the servers and leaves them marked active, so
 `msm start` (for example from cron) brings them back.
 
 The words `start`, `stop`, `restart`, `version`, `server`, `jargroup`,
-`config`, `update`, `help`, `maintenance` and `all` can never be server names.
+`config`, `update`, `install`, `help`, `maintenance` and `all` can never be server names (DEV-036).
 
 ## Global flags
 
@@ -55,7 +55,7 @@ and failed operations (DEV-004). `msm` uses these statuses, which are stable:
 | 3 | `config` | a configuration file, a setting or its value cannot be used; nothing was done |
 | 4 | `not-found` | the server, world, JAR group or property does not exist |
 | 5 | `refused` | declined for safety: confirmation missing, server not proven stopped, name taken, another command holds the lock |
-| 6 | `unavailable` | a program or feature the command needs is missing (GNU screen, rdiff-backup), or the command is not in this build (`update`) |
+| 6 | `unavailable` | a program or feature the command needs is missing (GNU screen, rdiff-backup), or the build cannot do it (`update` in a development build, which has no release signing key) |
 | 130 | `interrupted` | stopped by Ctrl+C or a termination request |
 
 Standard output carries results and progress; warnings and errors go to
@@ -65,8 +65,8 @@ does not depend on which server finished first.
 
 ## Unattended use
 
-`msm` never waits for input that cannot come. Only two commands ask a
-question, both destructive: `server delete` and `jargroup delete`. On a
+`msm` never waits for input that cannot come. Only three commands ask a
+question: `server delete` and `jargroup delete` (destructive), and `update`. On a
 terminal they print what will be removed and ask `[y/N]` (only `y`, `Y` or
 `yes` confirms). When standard input is not a terminal they print the plan
 and refuse with status 5 unless `--yes` is given. Every other command either
@@ -78,7 +78,56 @@ runs or refuses without asking.
 | `maintenance prune` | removes old archives | `--dry-run` to preview; the scheduler's explicit `maintenance run prune` |
 | `stop`, `restart` (also `all`) | interrupts players | players are warned first; `now` skips the countdown, never the save |
 | `<server> config <key> <value>` | rewrites `server.properties` | atomic, keeps comments and unknown keys; identity settings only while stopped |
-| `update` | would replace the program | not available in this build (status 6) |
+| `update` | replaces the `msm` executable | a `[y/N]` answer on a terminal, or `--noinput`; refuses with status 5 otherwise. Only a release signed by a key compiled into the build is accepted (see [Updating](#updating)) |
+
+## Updating
+
+`msm update [--noinput]` replaces the `msm` executable with the latest release
+published for this fork (DEV-006). It never fetches or runs a script, and it
+reads and writes nothing but the executable, a `.previous` copy of it and a
+lock and staging files beside it: configuration, servers, worlds and backups
+are untouched.
+
+1. The release manifest and its signature are fetched over HTTPS from the
+   location compiled into the build. The signature must verify against an
+   ed25519 key compiled into the build; the network and the host serving the
+   files are not trusted.
+2. The artifact for exactly this operating system and architecture is chosen
+   (`linux` or `darwin`, `amd64` or `arm64`); there is no fallback.
+3. A release older than the installed version is refused; the same version is
+   "up to date".
+4. After the `[y/N]` answer, the archive is downloaded next to the executable
+   (so on the same filesystem), checked against the signed size and SHA-256,
+   and read in memory: it must hold exactly `msm`, `LICENSE.markdown`,
+   `SHA256SUMS` and `RELEASE`, the binary must match `SHA256SUMS`, and
+   `RELEASE` must name the signed version, commit, OS and architecture.
+5. The new program is staged beside the old one with its permissions and, as
+   root, its owner, and its `version` command is run (no shell) to confirm it
+   starts and reports the signed version and commit.
+6. The old program is kept as `<msm>.previous` and the new one is renamed over
+   it atomically. At every moment the executable is a complete working
+   program; an interrupted update leaves the old one, and the next update
+   removes its leftovers.
+
+`--check` stops after step 3. `--rollback` swaps the `.previous` program back
+(and keeps the program it replaced as the new `.previous`).
+
+It refuses (status 5) when the executable is under a package manager's
+directory (`/usr/bin`, a Homebrew `Cellar`, `/nix/store`, ...; update through
+that package manager), when the directory is not writable by you (for
+example, run it with `sudo` for a root-owned `/usr/local/bin`), or when another
+update holds the lock. A symlinked `msm` is followed: the real file is
+replaced and the link is kept. A development build has no signing key, so it
+exits with status 6; so does a build whose version is not `X.Y.Z`.
+
+## Installation helpers
+
+`msm install check` reports whether GNU screen and Java are on `PATH` and, if
+not, the command to install them; it installs nothing. `msm install config`
+writes a minimal `msm.conf` and creates the data directories, and `msm install
+service` prints (or with `--write` installs, and with `--write --enable`
+enables for the next boot, never starting it) a systemd unit or launchd
+daemon. See [install.md](install.md).
 
 ## Settings
 

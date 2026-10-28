@@ -11,9 +11,9 @@ deferred.
 
 | Status | Rows | Meaning |
 |---|---|---|
-| implemented | 151 | preserved; `implementation` lists the Go files and `verification` the tests (`path::TestName`) that prove it |
-| deviation | 24 | deliberately different or absent; `deviations` names the entries in [deviations.md](deviations.md) that a reviewer approved, and `verification` still tests what the port does instead |
-| deferred | 3 | owned by a later task (P15 packaging and services, P16 migration); the row says what is missing |
+| implemented | 153 | preserved; `implementation` lists the Go files and `verification` the tests (`path::TestName`) that prove it |
+| deviation | 25 | deliberately different or absent; `deviations` names the entries in [deviations.md](deviations.md) that a reviewer approved, and `verification` still tests what the port does instead |
+| deferred | 0 | owned by a later task (P15 packaging and services, P16 migration); the row says what is missing |
 
 The command rows also name their section of the golden file
 [`internal/cli/testdata/commands.golden`](../../internal/cli/testdata/commands.golden)
@@ -31,11 +31,7 @@ deviation, not an implementation: `DEBUG` (DEV-035), `VERSIONING_*` (DEV-005),
 
 ## Deferred
 
-| Row | What is not done, and who does it |
-|---|---|
-| SURF-027 | `init/msm.service` (system-wide systemd unit): P15 ships service definitions; the commands they run exist |
-| SURF-028 | `init/msm@.service` (per-server unit): P15 |
-| SURF-029 | Debian, Red Hat and Arch installers: P15 installs the binary, the data directories, the configuration, the schedule that runs `msm maintenance run <job>` and the shell completions in [`completions/`](../../completions/) |
-
-The schedule behind SURF-030 to SURF-037 follows the same rule: the Go jobs
-are implemented and tested, and P15 installs the timers that run them (DEV-012).
+Nothing is deferred. The schedule behind SURF-030 to SURF-037 follows the same
+rule as before: the Go jobs are implemented and tested, and
+[`examples/scheduling`](../../examples/scheduling) shows how to run them from
+cron or a timer; `msm install` does not install a schedule (DEV-012, DEV-037).

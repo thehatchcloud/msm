@@ -55,6 +55,10 @@ type deps struct {
 	pruner func(w io.Writer) (*maintenance.Pruner, error)
 	// globalConfig lists the global settings, writing import warnings to w.
 	globalConfig func(w io.Writer) ([]legacyconf.ConfigEntry, error)
+	// update is the host the self-updater runs against.
+	update updateEnv
+	// install is the host the installation commands run against.
+	install installEnv
 	// program is how the legacy messages name the executable ($0).
 	program string
 }
@@ -69,6 +73,8 @@ func defaultDeps() deps {
 	d.pruner = hostPruner(d)
 	d.stdio = hostStdio
 	d.globalConfig = hostGlobalConfig
+	d.update = defaultUpdateEnv()
+	d.install = defaultInstallEnv()
 	return d
 }
 

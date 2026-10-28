@@ -81,12 +81,15 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Test pure-Go build
+        timeout-minutes: 6
         run: CGO_ENABLED=0 go test -count=1 ./...
       - name: Race tests
+        timeout-minutes: 6
         run: CGO_ENABLED=1 go test -race -count=1 -timeout=3m ./...
       # macOS bundles screen 4.00.03, which fails the native tests; the
       # backend must refuse it with a clear error rather than half-work.
       - name: Screen backend refuses the OS-bundled screen
+        timeout-minutes: 4
         if: runner.os == 'macOS'
         run: |
           if [ -x /usr/bin/screen ]; then
@@ -96,9 +99,15 @@ jobs:
             echo "No /usr/bin/screen on this image"
           fi
       - name: Native binary smoke test
+        timeout-minutes: 6
         run: |
           CGO_ENABLED=0 go build -trimpath -ldflags="-X github.com/thehatchcloud/msm/internal/buildinfo.commit=$GITHUB_SHA" -o "$RUNNER_TEMP/msm" ./cmd/msm
           "$RUNNER_TEMP/msm" help
+          # A development build has no signing key: update must refuse (6)
+          # without changing anything, and install only reports or prints.
+          set +e; "$RUNNER_TEMP/msm" update --noinput; status=$?; set -e
+          test "$status" = 6
+          "$RUNNER_TEMP/msm" install service --binary "$RUNNER_TEMP/msm" 2>/dev/null | grep -E "ExecStart=.* start$|<string>supervise</string>"
           "$RUNNER_TEMP/msm" version | grep -F "$GITHUB_SHA"
           if "$RUNNER_TEMP/msm" example start; then
             echo "Unimplemented command unexpectedly succeeded"

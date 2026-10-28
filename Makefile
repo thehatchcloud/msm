@@ -53,6 +53,30 @@ cross: ## Build dist/msm-<os>-<arch> for every supported platform
 			-o $(DIST_DIR)/msm-$$os-$$arch ./cmd/msm || exit 1; \
 	done
 
+# make release VERSION=1.2.3 RELEASE_KEY=/path/to/key RELEASE_URL=https://.../download
+# builds the four platform executables with the version, commit, release
+# location and public signing key compiled in, then packages and signs them
+# into dist/release. It publishes nothing; docs/release.md has the rest.
+RELEASE_DIR := $(DIST_DIR)/release
+
+.PHONY: release
+release: check-go ## Build signed release files in dist/release (VERSION, RELEASE_KEY, RELEASE_URL)
+	@echo "$(VERSION)" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$$' || { echo "VERSION must be X.Y.Z, not '$(VERSION)'"; exit 1; }
+	@test -n "$(RELEASE_KEY)" -a -n "$(RELEASE_URL)" || { echo "set RELEASE_KEY (a msm-release keygen file) and RELEASE_URL (https directory the files will be served from)"; exit 1; }
+	@git diff --quiet HEAD -- || { echo "the working tree has uncommitted changes; a release is built from a commit"; exit 1; }
+	@rm -rf $(RELEASE_DIR) $(DIST_DIR)/build && mkdir -p $(RELEASE_DIR) $(DIST_DIR)/build
+	@pub="$$($(GO) run ./cmd/msm-release pubkey -key $(RELEASE_KEY))" || exit 1; \
+	commit="$$(git rev-parse HEAD)"; \
+	ld="-s -w -X $(PKG)/internal/buildinfo.version=$(VERSION) -X $(PKG)/internal/buildinfo.commit=$$commit -X $(PKG)/internal/buildinfo.updateKeys=$$pub -X $(PKG)/internal/buildinfo.updateURL=$(RELEASE_URL)"; \
+	bins=""; \
+	for p in $(PLATFORMS); do \
+		os=$${p%/*}; arch=$${p#*/}; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build -trimpath -ldflags="$$ld" -o $(DIST_DIR)/build/msm-$$os-$$arch ./cmd/msm || exit 1; \
+		bins="$$bins -bin $$p=$(DIST_DIR)/build/msm-$$os-$$arch"; \
+	done; \
+	$(GO) run ./cmd/msm-release package -key $(RELEASE_KEY) -version $(VERSION) -commit $$commit -license LICENSE.markdown -out $(RELEASE_DIR) $$bins || exit 1; \
+	$(GO) run ./cmd/msm-release verify -pubkey "$$pub" -dir $(RELEASE_DIR)
+
 .PHONY: test
 test: check-go ## Run the unit tests (pure-Go build)
 	CGO_ENABLED=0 $(GO) test -count=1 ./...

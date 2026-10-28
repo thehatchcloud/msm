@@ -14,8 +14,8 @@ not yet replaced.
 
 The Go foundation uses Cobra for help, version, flags, and shell completion,
 and Viper for native configuration (currently the `debug` setting only).
-Every server-management command is implemented in Go except `update`; see the
-[command reference](docs/cli.md). Build it with the pinned Go toolchain using
+Every command is implemented in Go; see the [command reference](docs/cli.md),
+[installing and updating](docs/install.md) and [releases](docs/release.md). Build it with the pinned Go toolchain using
 `CGO_ENABLED=0 go build -o bin/msm ./cmd/msm`; it does not call the Bash
 manager, but it manages the servers its configuration names, so try it on a test
 installation first. See [development and CI](docs/development.md)

@@ -1,7 +1,7 @@
 # Go development and build workflow
 
 This is an alpha, not a production manager. The Go executable runs every
-command of the legacy manager's `help` list except `update` (see
+command of the legacy manager's `help` list (see
 [docs/cli.md](cli.md)): the P05 instance commands (see [Server
 instances](#server-instances-p05)), the P06 lifecycle commands, the P07 JAR
 commands, the P08 console and player commands (see [Console and player
@@ -11,7 +11,8 @@ the P12 RAM worlds (see [RAM-backed worlds](ram-worlds.md)), the P13 log
 rolling and scheduled maintenance (see [maintenance](maintenance.md)) and the
 P14 `config`, `help`, `version`, Cobra-generated `completion` and `--format
 json` (see [CLI, completion and parity](#cli-completion-and-parity-p14)).
-`update` is recognised and refuses with a named status until P15 (DEV-006).
+`update` is the verified updater and `install` the installation helpers of P15
+(see [Installation and updates](#installation-and-updates-p15)).
 Viper reads the small native configuration schema described below. No Go
 command runs the legacy manager; the manager's runtime logic is Go, and the
 external programs it can use (GNU screen, Java, and optionally rdiff-backup)
@@ -1285,9 +1286,31 @@ not necessarily the head branch SHA.
 These files are test artifacts, not approved releases, installers or deployed
 applications. Do not overwrite `/usr/local/bin/msm` or the existing init script.
 The inherited automatic tag-to-release workflow is removed by this change.
-Release packaging, signing/provenance, verified updates and publishing remain
-P15/P17 work. There is intentionally no replacement release publishing workflow
-yet, so CI cannot publish an unreviewed Go release.
+Release packaging, signing and the verified updater are P15 (see
+[release.md](release.md)); publishing remains P17 work. There is intentionally
+no replacement release publishing workflow yet, so CI cannot publish an
+unreviewed Go release.
+
+## Installation and updates (P15)
+
+* `internal/update` is the updater and the release packaging it consumes:
+  `manifest.go` (signed manifest, strict parsing, version comparison),
+  `archive.go` (exact archive layout and identifier checks), `source.go`
+  (HTTPS-only fetching, bounded), `target.go` and `replace.go` (executable
+  resolution, package-manager refusal, lock, same-directory staging,
+  `.previous`, atomic rename, rollback) and `update.go` (the sequence).
+* `internal/install` renders `msm.conf`, the systemd unit and the launchd
+  property list and reports prerequisites. `internal/cli/install.go` and
+  `update.go` are the commands.
+* `cmd/msm-release` is the maintainer tool: `keygen`, `pubkey`, `package` and
+  `verify`. Its test builds the real `msm` twice, packages and signs a
+  release, and updates one build to the other with the real staged-program
+  check. `make release` runs the same chain for the four platforms.
+* The tests interrupt the sequence at every step (`hooks` in
+  `internal/update/replace.go`), tamper with the signature, manifest and
+  archive, and cover symlinked and package-managed executables, a read-only
+  directory, a concurrent update, a downgrade and a development build.
+  The permission test is skipped when run as root.
 
 ## Review and branch policy
 

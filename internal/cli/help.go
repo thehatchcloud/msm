@@ -39,7 +39,7 @@ func programPath(arg0 string) string {
 
 // legacyHelp is command_help from init/msm, verbatim, with %s for $0.
 // TestLegacyHelpAndNoSuchCommand compares it with the source. Everything it
-// lists is implemented except update, which refuses (docs/cli.md); what the
+// lists is implemented (update is the signed-release updater, docs/cli.md); what the
 // list leaves out (all, --format, exit statuses) is in docs/cli.md and the
 // help topics.
 const legacyHelp = `Usage: %s command:
