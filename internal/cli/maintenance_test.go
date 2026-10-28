@@ -109,15 +109,15 @@ func TestLogrollRefusals(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(one, "server.log"), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if code, _, errOut := f.run(t, "", "ghost", "logroll"); code != ExitError || !strings.Contains(errOut, `there is no server with the name "ghost"`) {
+	if code, _, errOut := f.run(t, "", "ghost", "logroll"); code != ExitNotFound || !strings.Contains(errOut, `there is no server with the name "ghost"`) {
 		t.Errorf("ghost = %d, %q", code, errOut)
 	}
-	if code, _, errOut := f.run(t, "", "one", "logroll", "extra"); code != ExitError || !strings.Contains(errOut, "No such command") {
+	if code, _, errOut := f.run(t, "", "one", "logroll", "extra"); code != ExitUsage || !strings.Contains(errOut, "No such command") {
 		t.Errorf("extra argument = %d, %q", code, errOut)
 	}
 	// No way to reach its console, and not provably stopped: refused.
 	f.states["one"] = servers.Running
-	if code, _, errOut := f.run(t, "", "one", "logroll"); code != ExitError || !strings.Contains(errOut, "running") {
+	if code, _, errOut := f.run(t, "", "one", "logroll"); code != ExitRefused || !strings.Contains(errOut, "running") {
 		t.Errorf("running server = %d, %q", code, errOut)
 	}
 	if got, _ := os.ReadFile(filepath.Join(one, "server.log")); string(got) != content {
@@ -159,11 +159,11 @@ func TestMaintenancePruneOptions(t *testing.T) {
 		{"--only=nonsense", "unknown category"},
 	} {
 		code, _, errOut := f.run(t, "", "maintenance", "prune", c.args)
-		if code != ExitError || !strings.Contains(errOut, c.want) {
+		if code != ExitUsage || !strings.Contains(errOut, c.want) {
 			t.Errorf("prune %s = %d, %q", c.args, code, errOut)
 		}
 	}
-	if code, _, errOut := f.run(t, "", "maintenance", "prune", "extra"); code != ExitError {
+	if code, _, errOut := f.run(t, "", "maintenance", "prune", "extra"); code != ExitUsage {
 		t.Errorf("an argument was accepted: %d, %q", code, errOut)
 	}
 }
@@ -210,7 +210,7 @@ func TestMaintenanceRunRefusals(t *testing.T) {
 		{[]string{"maintenance", "run", "backup", "--jobs=0"}, "--jobs"},
 	} {
 		code, _, errOut := f.run(t, "", c.args...)
-		if code != ExitError || !strings.Contains(errOut, c.want) {
+		if code != ExitUsage || !strings.Contains(errOut, c.want) {
 			t.Errorf("%v = %d, %q; want %q", c.args, code, errOut, c.want)
 		}
 	}
@@ -249,7 +249,7 @@ func (f *serverFixture) run2servers(t *testing.T) (*servers.Manager, error) {
 func TestMaintenanceIsAReservedName(t *testing.T) {
 	f := newServerFixture(t)
 	code, _, errOut := f.run(t, "", "server", "create", "maintenance")
-	if code != ExitError || !strings.Contains(errOut, "reserved") {
+	if code != ExitUsage || !strings.Contains(errOut, "reserved") {
 		t.Errorf("= %d, %q", code, errOut)
 	}
 }

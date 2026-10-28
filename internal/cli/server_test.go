@@ -36,6 +36,8 @@ type serverFixture struct {
 	http     *http.Client
 	states   stateProber
 	terminal bool
+	// stdin, when set, replaces the string a run is given as standard input.
+	stdin io.Reader
 }
 
 // newServerFixture points MSM_CONF at a temporary msm.conf whose storage
@@ -136,8 +138,13 @@ func (f *serverFixture) run(t *testing.T, stdin string, args ...string) (int, st
 	}
 	d.roller = hostRoller(d)
 	d.pruner = hostPruner(d)
+	d.globalConfig = hostGlobalConfig
 	var out, errOut bytes.Buffer
-	code := run(args, strings.NewReader(stdin), &out, &errOut, buildinfo.Info{Version: "test"}, d)
+	var in io.Reader = strings.NewReader(stdin)
+	if f.stdin != nil {
+		in = f.stdin
+	}
+	code := run(args, in, &out, &errOut, buildinfo.Info{Version: "test"}, d)
 	return code, out.String(), errOut.String()
 }
 
@@ -168,22 +175,25 @@ func TestServerCommands(t *testing.T) {
 		t.Fatalf("list = %q, want %q", out, want)
 	}
 
-	if code, _, errOut := f.run(t, "", "server", "rename", "survival", "hardcore"); code != ExitError || !strings.Contains(errOut, "stop it first") {
+	if code, _, errOut := f.run(t, "", "server", "rename", "survival", "hardcore"); code != ExitRefused || !strings.Contains(errOut, "stop it first") {
 		t.Fatalf("renaming a running server: exit %d, %q", code, errOut)
 	}
 	f.states["survival"] = servers.Stopped
 	if out := f.mustRun(t, "server", "rename", "survival", "hardcore"); !strings.HasPrefix(out, "Renamed server \"survival\" to \"hardcore\".\n") {
 		t.Fatalf("rename output = %q", out)
 	}
-	for _, args := range [][]string{
-		{"server", "create", "hardcore"},
-		{"server", "create", "all"},
-		{"server", "create"},
-		{"server", "rename", "missing", "x"},
-		{"server", "list", "extra"},
+	for _, tc := range []struct {
+		args []string
+		code int
+	}{
+		{[]string{"server", "create", "hardcore"}, ExitRefused},
+		{[]string{"server", "create", "all"}, ExitUsage},
+		{[]string{"server", "create"}, ExitUsage},
+		{[]string{"server", "rename", "missing", "x"}, ExitNotFound},
+		{[]string{"server", "list", "extra"}, ExitUsage},
 	} {
-		if code, out, errOut := f.run(t, "", args...); code != ExitError || out != "" || strings.Count(errOut, "msm: ") != 1 {
-			t.Errorf("msm %v: exit %d stdout %q stderr %q", args, code, out, errOut)
+		if code, out, errOut := f.run(t, "", tc.args...); code != tc.code || out != "" || strings.Count(errOut, "msm: ") != 1 {
+			t.Errorf("msm %v: exit %d stdout %q stderr %q", tc.args, code, out, errOut)
 		}
 	}
 }
@@ -198,7 +208,7 @@ func TestServerDeleteConfirmation(t *testing.T) {
 
 	// Not a terminal and no --yes: refuse without reading stdin.
 	code, out, errOut := f.run(t, "yes\n", "server", "delete", "doomed")
-	if code != ExitError || !strings.Contains(errOut, "--yes") || !strings.Contains(out, dir) || !exists() {
+	if code != ExitRefused || !strings.Contains(errOut, "--yes") || !strings.Contains(out, dir) || !exists() {
 		t.Fatalf("noninteractive delete: exit %d out %q err %q", code, out, errOut)
 	}
 
@@ -210,7 +220,7 @@ func TestServerDeleteConfirmation(t *testing.T) {
 		}
 	}
 	f.states["doomed"] = servers.Running
-	if code, _, errOut := f.run(t, "y\n", "server", "delete", "doomed"); code != ExitError || !exists() || !strings.Contains(errOut, "stop it") {
+	if code, _, errOut := f.run(t, "y\n", "server", "delete", "doomed"); code != ExitRefused || !exists() || !strings.Contains(errOut, "stop it") {
 		t.Fatalf("deleted a running server: %d %q", code, errOut)
 	}
 	f.states["doomed"] = servers.Stopped
@@ -232,7 +242,7 @@ func TestServerCommandsReportBadMsmConf(t *testing.T) {
 	f := newServerFixture(t)
 	conf := os.Getenv("MSM_CONF")
 	os.WriteFile(conf, []byte("SERVER_STORAGE_PATH=$(rm -rf /)\n"), 0o644)
-	if code, _, errOut := f.run(t, "", "server", "list"); code != ExitError || !strings.Contains(errOut, conf) {
+	if code, _, errOut := f.run(t, "", "server", "list"); code != ExitConfig || !strings.Contains(errOut, conf) {
 		t.Fatalf("exit %d, %q", code, errOut)
 	}
 }
@@ -251,17 +261,17 @@ func TestLifecycleCommands(t *testing.T) {
 		t.Fatalf("status = %q", out)
 	}
 	// Start marks the server active even though it cannot start here.
-	if code, _, errOut := f.run(t, "", "a", "start"); code != ExitError || !strings.Contains(errOut, "screen is not installed") || !active("a") {
+	if code, _, errOut := f.run(t, "", "a", "start"); code != ExitUnavailable || !strings.Contains(errOut, "screen is not installed") || !active("a") {
 		t.Fatalf("start: %d %q active=%v", code, errOut, active("a"))
 	}
-	if code, _, _ := f.run(t, "", "b", "restart", "now"); code != ExitError || !active("b") {
+	if code, _, _ := f.run(t, "", "b", "restart", "now"); code != ExitUnavailable || !active("b") {
 		t.Fatal("restart now did not mark b active")
 	}
 	// The global stop leaves intent alone.
 	if out := f.mustRun(t, "stop", "now"); !strings.Contains(out, "No servers were running.") || !active("a") || !active("b") {
 		t.Fatalf("global stop: %q", out)
 	}
-	if code, _, errOut := f.run(t, "", "start", "--jobs", "1"); code != ExitError || !strings.Contains(errOut, "2 of 2 servers failed") {
+	if code, _, errOut := f.run(t, "", "start", "--jobs", "1"); code != ExitUnavailable || !strings.Contains(errOut, "2 of 2 servers failed") {
 		t.Fatalf("global start: %d %q", code, errOut)
 	}
 	// msm a stop marks only a inactive; msm all stop marks every server.
@@ -275,10 +285,10 @@ func TestLifecycleCommands(t *testing.T) {
 	if out := f.mustRun(t, "all", "status"); !strings.Contains(out, "a: Server \"a\" is stopped.") || !strings.Contains(out, "b: Server \"b\" is stopped.") {
 		t.Fatalf("all status: %q", out)
 	}
-	if code, _, errOut := f.run(t, "", "missing", "start"); code != ExitError || !strings.Contains(errOut, "no server with the name") {
+	if code, _, errOut := f.run(t, "", "missing", "start"); code != ExitNotFound || !strings.Contains(errOut, "no server with the name") {
 		t.Fatalf("missing: %d %q", code, errOut)
 	}
-	if code, _, errOut := f.run(t, "", "a", "stop", "--timeout", "-1s"); code != ExitError || !strings.Contains(errOut, "--timeout") {
+	if code, _, errOut := f.run(t, "", "a", "stop", "--timeout", "-1s"); code != ExitUsage || !strings.Contains(errOut, "--timeout") {
 		t.Fatalf("negative timeout: %d %q", code, errOut)
 	}
 }
@@ -298,7 +308,7 @@ func TestJargroupCommands(t *testing.T) {
 	if out := f.mustRun(t, "jargroup", "create", "paper", srv.URL+"/paper.jar"); out != "Creating jar group... Done.\n" {
 		t.Fatalf("create = %q", out)
 	}
-	if code, _, errOut := f.run(t, "", "jargroup", "create", "old", "http://dl.bukkit.org/craftbukkit.jar"); code != ExitError || !strings.Contains(errOut, "https") {
+	if code, _, errOut := f.run(t, "", "jargroup", "create", "old", "http://dl.bukkit.org/craftbukkit.jar"); code != ExitConfig || !strings.Contains(errOut, "https") {
 		t.Fatalf("http target: %d %q", code, errOut)
 	}
 	out := f.mustRun(t, "jargroup", "getlatest", "paper")
@@ -319,10 +329,10 @@ func TestJargroupCommands(t *testing.T) {
 	if out := f.mustRun(t, "survival", "jar", "paper"); !strings.Contains(out, "Server \"survival\" is now using \"") {
 		t.Fatalf("jar = %q", out)
 	}
-	if code, _, errOut := f.run(t, "", "survival", "jar", "paper", "nope.jar"); code != ExitError || !strings.Contains(errOut, `no jar named "nope.jar"`) {
+	if code, _, errOut := f.run(t, "", "survival", "jar", "paper", "nope.jar"); code != ExitNotFound || !strings.Contains(errOut, `no jar named "nope.jar"`) {
 		t.Fatalf("missing file: %d %q", code, errOut)
 	}
-	if code, _, errOut := f.run(t, "", "nobody", "jar", "paper"); code != ExitError || !strings.Contains(errOut, "no server with the name") {
+	if code, _, errOut := f.run(t, "", "nobody", "jar", "paper"); code != ExitNotFound || !strings.Contains(errOut, "no server with the name") {
 		t.Fatalf("missing server: %d %q", code, errOut)
 	}
 
@@ -335,7 +345,7 @@ func TestJargroupCommands(t *testing.T) {
 		t.Fatalf("link after rename = %s", target)
 	}
 	f.terminal = true
-	if code, _, errOut := f.run(t, "y\n", "jargroup", "delete", "paper2"); code != ExitError || !strings.Contains(errOut, `server "survival"`) {
+	if code, _, errOut := f.run(t, "y\n", "jargroup", "delete", "paper2"); code != ExitRefused || !strings.Contains(errOut, `server "survival"`) {
 		t.Fatalf("delete in use: %d %q", code, errOut)
 	}
 	os.Remove(filepath.Join(f.root, "survival", "server.jar"))
@@ -343,13 +353,13 @@ func TestJargroupCommands(t *testing.T) {
 		t.Fatalf("declined delete: %d %q", code, out)
 	}
 	f.terminal = false
-	if code, _, errOut := f.run(t, "y\n", "jargroup", "delete", "paper2"); code != ExitError || !strings.Contains(errOut, "--yes") {
+	if code, _, errOut := f.run(t, "y\n", "jargroup", "delete", "paper2"); code != ExitRefused || !strings.Contains(errOut, "--yes") {
 		t.Fatalf("noninteractive delete: %d %q", code, errOut)
 	}
 	if out := f.mustRun(t, "jargroup", "delete", "--yes", "paper2"); out != "Jar group deleted.\n" {
 		t.Fatalf("delete = %q", out)
 	}
-	if code, _, errOut := f.run(t, "", "jargroup", "delete", "--yes", "paper2"); code != ExitError || !strings.Contains(errOut, "no jar group") {
+	if code, _, errOut := f.run(t, "", "jargroup", "delete", "--yes", "paper2"); code != ExitNotFound || !strings.Contains(errOut, "no jar group") {
 		t.Fatalf("delete missing: %d %q", code, errOut)
 	}
 }
@@ -398,15 +408,16 @@ func TestWorldsCommands(t *testing.T) {
 	for _, tc := range []struct {
 		args []string
 		want string
+		code int
 	}{
-		{[]string{"all", "worlds", "on", "main"}, `when specifying "all" servers, "all" worlds must be specified also`},
-		{[]string{"all", "worlds", "off", "main"}, `"all" worlds must be specified also`},
-		{[]string{"one", "worlds", "on", "all"}, `there is no world with the name "all"`},
-		{[]string{"one", "worlds", "on", "ghost"}, `there is no world with the name "ghost"`},
-		{[]string{"ghost", "worlds", "list"}, `there is no server with the name "ghost"`},
+		{[]string{"all", "worlds", "on", "main"}, `when specifying "all" servers, "all" worlds must be specified also`, ExitUsage},
+		{[]string{"all", "worlds", "off", "main"}, `"all" worlds must be specified also`, ExitUsage},
+		{[]string{"one", "worlds", "on", "all"}, `there is no world with the name "all"`, ExitNotFound},
+		{[]string{"one", "worlds", "on", "ghost"}, `there is no world with the name "ghost"`, ExitNotFound},
+		{[]string{"ghost", "worlds", "list"}, `there is no server with the name "ghost"`, ExitNotFound},
 	} {
 		code, _, errOut := f.run(t, "", tc.args...)
-		if code != ExitError || !strings.Contains(errOut, tc.want) {
+		if code != tc.code || !strings.Contains(errOut, tc.want) {
 			t.Errorf("msm %s = %d, %q; want %q", strings.Join(tc.args, " "), code, errOut, tc.want)
 		}
 	}
@@ -414,14 +425,14 @@ func TestWorldsCommands(t *testing.T) {
 	for _, args := range [][]string{{"one", "worlds"}, {"one", "worlds", "list", "x"}, {"one", "worlds", "on"}, {"one", "worlds", "ram"},
 		{"one", "worlds", "todisk", "x"}, {"one", "worlds", "backup", "x"}, {"one", "backup", "x"}, {"one", "worlds", "bogus"}} {
 		code, _, errOut := f.run(t, "", args...)
-		if code != ExitError || !strings.Contains(errOut, "No such command") {
+		if code != ExitUsage || !strings.Contains(errOut, "No such command") {
 			t.Errorf("msm %s = %d, %q; want No such command", strings.Join(args, " "), code, errOut)
 		}
 	}
 
 	// RAM worlds are off in this configuration: both commands say so.
 	code, _, errOut := f.run(t, "", "one", "worlds", "ram", "main")
-	if code != ExitError || !strings.Contains(errOut, "RAMDISK_STORAGE_ENABLED") {
+	if code != ExitConfig || !strings.Contains(errOut, "RAMDISK_STORAGE_ENABLED") {
 		t.Errorf("ram = %d, %q", code, errOut)
 	}
 	if _, err := os.Stat(filepath.Join(f.root, "one", "worldstorage", "main", "inram")); err == nil {
@@ -434,18 +445,18 @@ func TestWorldsCommands(t *testing.T) {
 		t.Errorf("all todisk = %q", out)
 	}
 	code, _, errOut = f.run(t, "", "all", "worlds", "ram", "main")
-	if code != ExitError || !strings.Contains(errOut, "one server at a time") {
+	if code != ExitUsage || !strings.Contains(errOut, "one server at a time") {
 		t.Errorf("all ram = %d, %q", code, errOut)
 	}
 	code, _, errOut = f.run(t, "", "one", "worlds", "ram", "ghost")
-	if code != ExitError || !strings.Contains(errOut, `there is no world with the name "ghost"`) {
+	if code != ExitNotFound || !strings.Contains(errOut, `there is no world with the name "ghost"`) {
 		t.Errorf("ram ghost = %d, %q", code, errOut)
 	}
 
 	// A server not proven stopped is refused, and nothing moves.
 	f.states["one"] = servers.Running
 	code, _, errOut = f.run(t, "", "one", "worlds", "off", "main")
-	if code != ExitError || !strings.Contains(errOut, "running") {
+	if code != ExitRefused || !strings.Contains(errOut, "running") {
 		t.Errorf("off while running = %d, %q", code, errOut)
 	}
 	if _, err := os.Stat(filepath.Join(f.root, "one", "worldstorage", "main")); err != nil {
@@ -492,15 +503,15 @@ func TestBackupCommands(t *testing.T) {
 	if count(filepath.Join(archives, "worlds", "two", "other")) != 1 {
 		t.Errorf("all did not back up server two")
 	}
-	if code, _, errOut := f.run(t, "", "ghost", "backup"); code != ExitError || !strings.Contains(errOut, `there is no server with the name "ghost"`) {
+	if code, _, errOut := f.run(t, "", "ghost", "backup"); code != ExitNotFound || !strings.Contains(errOut, `there is no server with the name "ghost"`) {
 		t.Errorf("ghost backup = %d, %q", code, errOut)
 	}
-	if code, _, errOut := f.run(t, "", "one", "backup", "--backup-timeout=-1s"); code != ExitError || !strings.Contains(errOut, "--backup-timeout") {
+	if code, _, errOut := f.run(t, "", "one", "backup", "--backup-timeout=-1s"); code != ExitUsage || !strings.Contains(errOut, "--backup-timeout") {
 		t.Errorf("negative timeout = %d, %q", code, errOut)
 	}
 	f.states["two"] = servers.Running
 	before := count(filepath.Join(archives, "backups", "two"))
-	if code, _, errOut := f.run(t, "", "two", "backup"); code != ExitError || !strings.Contains(errOut, "running") {
+	if code, _, errOut := f.run(t, "", "two", "backup"); code != ExitRefused || !strings.Contains(errOut, "running") {
 		t.Errorf("backup of a running server = %d, %q", code, errOut)
 	}
 	if count(filepath.Join(archives, "backups", "two")) != before {

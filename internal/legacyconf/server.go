@@ -219,3 +219,36 @@ func (s *ServerSettings) Owner() (identity.Identity, error) {
 	}
 	return id, nil
 }
+
+// ServerSettingNames lists the registered per-server settings in
+// registration order, the order `msm <server> config` shows them in.
+func ServerSettingNames() []string {
+	names := make([]string, len(serverSettings))
+	for i, s := range serverSettings {
+		names[i] = s.Name
+	}
+	return names
+}
+
+// IsServerSetting reports whether name is a registered per-server setting.
+func IsServerSetting(name string) bool {
+	for _, s := range serverSettings {
+		if s.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// SettingFromKey maps a server.properties key such as "msm-stop-delay" to
+// the registered setting it overrides ("STOP_DELAY"). ok is false for an
+// ordinary Minecraft property, and registered is false for an msm-* key no
+// setting answers to (such a key is ignored by the manager).
+func SettingFromKey(key string) (name string, ok, registered bool) {
+	lower := strings.ToLower(key)
+	if !strings.HasPrefix(lower, "msm-") {
+		return "", false, false
+	}
+	name = strings.ToUpper(strings.ReplaceAll(lower[len("msm-"):], "-", "_"))
+	return name, true, IsServerSetting(name)
+}

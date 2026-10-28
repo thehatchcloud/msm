@@ -43,6 +43,12 @@ func Parse(data []byte) *Document {
 
 // Load reads and parses path.
 func Load(path string) (*Document, error) {
+	// Reading a FIFO would wait for a writer that may never come, and a
+	// device has no end; every command that resolves a server settings
+	// passes through here.
+	if info, err := os.Stat(path); err == nil && !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("serverprops: read %s: not a regular file", path)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("serverprops: read %s: %w", path, err)
@@ -122,9 +128,24 @@ func (d *Document) lastMatch(key string) (value string, index int, found bool) {
 // because it would add, remove or reshape a line of the file.
 var ErrUnsafeProperty = errors.New("serverprops: unsafe property")
 
-// Set assigns key to value, in place if key already has an exact,
-// case-sensitive matching assignment line, or otherwise by appending a new
-// unquoted "key=value" line. The written value is never quoted or escaped,
+// GetExact is Get for a Minecraft property: Java's Properties and the
+// server treat keys as case-sensitive, so only an assignment spelled
+// exactly like key counts. The last such line wins, as it does for the
+// server.
+func (d *Document) GetExact(key string) (string, bool) {
+	value, found := "", false
+	for _, line := range d.lines {
+		if k, v, ok := parseLine(line); ok && k == key {
+			value, found = unquote(v), true
+		}
+	}
+	return value, found
+}
+
+// Set assigns key to value, in place on every exact, case-sensitive
+// matching assignment line (a duplicate left by hand would otherwise keep
+// overriding the first, because the last one wins), or otherwise by
+// appending a new unquoted "key=value" line. The written value is never quoted or escaped,
 // matching the legacy manager's own property writer; only Get needs to
 // tolerate quotes left over from a hand-edited file.
 //
@@ -139,13 +160,15 @@ func (d *Document) Set(key, value string) error {
 		return fmt.Errorf("%w: %s value contains a line break or NUL", ErrUnsafeProperty, key)
 	}
 	line := key + "=" + value
+	found := false
 	for i, existing := range d.lines {
 		if k, _, ok := parseLine(existing); ok && k == key {
-			d.lines[i] = line
-			return nil
+			d.lines[i], found = line, true
 		}
 	}
-	d.lines = append(d.lines, line)
+	if !found {
+		d.lines = append(d.lines, line)
+	}
 	return nil
 }
 

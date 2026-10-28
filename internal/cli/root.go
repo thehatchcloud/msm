@@ -31,7 +31,10 @@ func newRootCommand(info buildinfo.Info, d deps) (*cobra.Command, error) {
 		Version:       info.String(),
 		SilenceErrors: true,
 		SilenceUsage:  true,
-		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if err := checkFormat(cmd, args); err != nil {
+				return err
+			}
 			settings, err := config.Read(v, configFile)
 			if err != nil {
 				return err
@@ -57,10 +60,14 @@ func newRootCommand(info buildinfo.Info, d deps) (*cobra.Command, error) {
 	})
 	// Register these before command discovery so either ordering with a
 	// value-taking persistent flag (for example --help --config path) works.
+	root.SetHelpCommand(newHelpCommand(d))
 	root.InitDefaultHelpFlag()
 	root.InitDefaultVersionFlag()
 	root.PersistentFlags().StringVar(&configFile, "config", "", "configuration file (default: user config directory/msm/config.yaml)")
 	root.PersistentFlags().Bool("debug", false, "enable diagnostic output")
+	root.PersistentFlags().String("format", formatText,
+		"output format: text, or json for version, config, server list and status (docs/cli.md)")
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{err} })
 	if err := v.BindPFlag("debug", root.PersistentFlags().Lookup("debug")); err != nil {
 		return nil, fmt.Errorf("bind debug flag: %w", err)
 	}
@@ -70,6 +77,10 @@ func newRootCommand(info buildinfo.Info, d deps) (*cobra.Command, error) {
 		"let a complete backup with COMPLETE_BACKUP_FOLLOW_SYMLINKS=true include link targets outside the server, after you have reviewed the list it prints")
 	root.AddCommand(newVersionCommand(info), newServerCommand(d),
 		newGlobalCommand(d, lifecycle.VerbStart), newGlobalCommand(d, lifecycle.VerbStop),
-		newGlobalCommand(d, lifecycle.VerbRestart), newJargroupCommand(d), newMaintenanceCommand(d))
+		newGlobalCommand(d, lifecycle.VerbRestart), newJargroupCommand(d), newMaintenanceCommand(d),
+		newConfigCommand(d), newUpdateCommand())
+	root.ValidArgsFunction = completeServerFirst(d)
+	attachCompletions(root, d)
+	markUsage(root)
 	return root, nil
 }

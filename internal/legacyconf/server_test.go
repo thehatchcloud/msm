@@ -206,3 +206,79 @@ func TestServerOwner(t *testing.T) {
 		t.Fatalf("Owner() of a missing user = %v", err)
 	}
 }
+
+func TestGlobalSettingsMatchInventory(t *testing.T) {
+	data, err := os.ReadFile("../../compatibility/settings.tsv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want []string
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if cols := strings.Split(line, "\t"); cols[0] == "global" {
+			want = append(want, cols[1]+"="+cols[2])
+		}
+	}
+	var got []string
+	for _, s := range globalSettings {
+		got = append(got, s.Name+"="+s.Default)
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("global settings differ from compatibility/settings.tsv:\ngot  %q\nwant %q", got, want)
+	}
+	for name := range goDefaults {
+		found := false
+		for _, s := range globalSettings {
+			found = found || s.Name == name
+		}
+		if !found {
+			t.Fatalf("goDefaults names %s, which is not a global setting", name)
+		}
+	}
+}
+
+func TestGlobalEntries(t *testing.T) {
+	f := &File{Path: "msm.conf", Values: map[string]Assignment{
+		"RAM_X":                 {Value: "ignored", Line: 1},
+		"JAR_STORAGE_PATH":      {Value: "/srv/jars", Line: 2},
+		"DEFAULT_RAM":           {Value: "2048", Line: 3},
+		"RDIFF_BACKUP_ROTATION": {Value: "", Line: 4},
+	}}
+	got := map[string]ConfigEntry{}
+	var order []string
+	for _, e := range GlobalEntries(f, map[string]string{"SERVER_STORAGE_PATH": "/data/servers"}) {
+		got[e.Name] = e
+		order = append(order, e.Name)
+	}
+	if len(order) != len(globalSettings)+len(serverSettings) || order[0] != "DEBUG" || order[len(globalSettings)] != "DEFAULT_USERNAME" {
+		t.Fatalf("unexpected order %q", order)
+	}
+	for name, want := range map[string]ConfigEntry{
+		"JAR_STORAGE_PATH":        {"JAR_STORAGE_PATH", "/srv/jars", "msm.conf"},
+		"SERVER_STORAGE_PATH":     {"SERVER_STORAGE_PATH", "/data/servers", "detected"},
+		"DEFAULT_RAM":             {"DEFAULT_RAM", "2048", "msm.conf"},
+		"DEFAULT_STOP_DELAY":      {"DEFAULT_STOP_DELAY", "10", "default"},
+		"RDIFF_BACKUP_ROTATION":   {"RDIFF_BACKUP_ROTATION", "7", "default"},
+		"RAMDISK_STORAGE_ENABLED": {"RAMDISK_STORAGE_ENABLED", "false", "default"},
+	} {
+		if got[name] != want {
+			t.Errorf("%s = %+v, want %+v", name, got[name], want)
+		}
+	}
+	if nil2 := GlobalEntries(nil, nil); len(nil2) != len(order) || nil2[1].Value != "minecraft" {
+		t.Fatalf("no file: %v", nil2[:2])
+	}
+}
+
+func TestSettingFromKey(t *testing.T) {
+	for key, want := range map[string][3]any{
+		"msm-stop-delay": {"STOP_DELAY", true, true},
+		"MSM-RAM":        {"RAM", true, true},
+		"msm-bogus":      {"BOGUS", true, false},
+		"motd":           {"", false, false},
+	} {
+		name, ok, reg := SettingFromKey(key)
+		if name != want[0] || ok != want[1] || reg != want[2] {
+			t.Errorf("SettingFromKey(%q) = %q %v %v, want %v", key, name, ok, reg, want)
+		}
+	}
+}

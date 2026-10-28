@@ -67,7 +67,7 @@ func runWorldsCommand(cmd *cobra.Command, d deps, o lifecycleOptions, target str
 		}
 	case len(rest) == 2 && rest[0] == "ram":
 		if target == "all" {
-			return errors.New(`a world's RAM status is changed on one server at a time; name the server instead of "all"`)
+			return usageError{errors.New(`a world's RAM status is changed on one server at a time; name the server instead of "all"`)}
 		}
 		world = rest[1]
 		op = func(ctx context.Context, m *worlds.Manager, s string, out worlds.Output) error {
@@ -100,21 +100,21 @@ func runWorldsCommand(cmd *cobra.Command, d deps, o lifecycleOptions, target str
 	if target == "all" {
 		if allOp != nil {
 			if world != "all" {
-				return errors.New(`when specifying "all" servers, "all" worlds must be specified also`)
+				return usageError{errors.New(`when specifying "all" servers, "all" worlds must be specified also`)}
 			}
 			op = allOp
 		}
 		return m.ForAll(ctx, out, func(name string, o worlds.Output) error { return op(ctx, m, name, o) })
 	}
 	if world == "all" {
-		return fmt.Errorf("there is no world with the name %q", world)
+		return noSuchWorld(world)
 	}
 	err = op(ctx, m, target, out)
 	switch {
 	case errors.Is(err, servers.ErrNotFound) || errors.Is(err, servers.ErrInvalidName):
 		return fmt.Errorf("there is no server with the name %q: %w", target, err)
 	case errors.Is(err, worlds.ErrNoWorld):
-		return fmt.Errorf("there is no world with the name %q", world)
+		return noSuchWorld(world)
 	}
 	return err
 }

@@ -27,7 +27,7 @@ func TestRun(t *testing.T) {
 		code int
 		want string
 	}{
-		{"empty", nil, ExitError, ""},
+		{"empty", nil, ExitUsage, ""},
 		{"help", []string{"help"}, ExitOK, " command:\n\n--Setup Commands"},
 		{"server help", []string{"server"}, ExitOK, "rename"},
 		{"long help", []string{"--help"}, ExitOK, " command:\n\n--Setup Commands"},
@@ -35,27 +35,27 @@ func TestRun(t *testing.T) {
 		{"command help", []string{"help", "version"}, ExitOK, "Show the Go-port version"},
 		{"version", []string{"version"}, ExitOK, "go-port-test (commit abc123)"},
 		{"version flag", []string{"--version"}, ExitOK, "go-port-test (commit abc123)"},
-		{"unknown server command", []string{"example", "frobnicate"}, ExitError, ""},
-		{"server without command", []string{"example"}, ExitError, ""},
-		{"global extra argument", []string{"stop", "later"}, ExitError, ""},
-		{"start now", []string{"start", "now"}, ExitError, ""},
-		{"status now", []string{"example", "status", "now"}, ExitError, ""},
-		{"bad jobs", []string{"stop", "--jobs", "0"}, ExitError, ""},
-		{"server command", []string{"example", "start"}, ExitError, ""},
-		{"version extra", []string{"version", "extra"}, ExitError, ""},
-		{"invalid flag", []string{"--does-not-exist"}, ExitError, ""},
-		{"invalid bool", []string{"version", "--debug=bogus"}, ExitError, ""},
-		{"missing flag value", []string{"version", "--config"}, ExitError, ""},
-		{"shell text", []string{"$(touch SHOULD_NOT_EXIST)"}, ExitError, ""},
+		{"unknown server command", []string{"example", "frobnicate"}, ExitUsage, ""},
+		{"server without command", []string{"example"}, ExitUsage, ""},
+		{"global extra argument", []string{"stop", "later"}, ExitUsage, ""},
+		{"start now", []string{"start", "now"}, ExitUsage, ""},
+		{"status now", []string{"example", "status", "now"}, ExitUsage, ""},
+		{"bad jobs", []string{"stop", "--jobs", "0"}, ExitUsage, ""},
+		{"server command", []string{"example", "start"}, -1, ""},
+		{"version extra", []string{"version", "extra"}, ExitUsage, ""},
+		{"invalid flag", []string{"--does-not-exist"}, ExitUsage, ""},
+		{"invalid bool", []string{"version", "--debug=bogus"}, ExitUsage, ""},
+		{"missing flag value", []string{"version", "--config"}, ExitUsage, ""},
+		{"shell text", []string{"$(touch SHOULD_NOT_EXIST)"}, ExitUsage, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out, errOut bytes.Buffer
 			code := Run(tt.args, nil, &out, &errOut, buildinfo.Info{Version: "go-port-test", Commit: "abc123"})
-			if code != tt.code {
+			if tt.code < 0 && code == ExitOK || tt.code >= 0 && code != tt.code {
 				t.Fatalf("exit=%d, want %d; stderr=%q", code, tt.code, errOut.String())
 			}
-			if code == ExitOK {
+			if tt.code == ExitOK {
 				if !strings.Contains(out.String(), tt.want) || errOut.Len() != 0 {
 					t.Fatalf("stdout=%q stderr=%q", out.String(), errOut.String())
 				}
@@ -187,7 +187,7 @@ func TestLegacyHelpAndNoSuchCommand(t *testing.T) {
 		{"stop", "later"}, {"start", "now"}, {"jargroup"}, {"jargroup", "list", "extra"}, {"jargroup", "create", "x"},
 		{"survival", "jar"}, {"survival", "jar", "a", "b", "c"}} {
 		var out, errOut bytes.Buffer
-		if code := Run(args, nil, &out, &errOut, buildinfo.Current()); code != ExitError || out.Len() != 0 || errOut.String() != "No such command. See "+programPath(os.Args[0])+" help\n" {
+		if code := Run(args, nil, &out, &errOut, buildinfo.Current()); code != ExitUsage || out.Len() != 0 || errOut.String() != "No such command. See "+programPath(os.Args[0])+" help\n" {
 			t.Errorf("msm %v: exit %d stdout %q stderr %q", args, code, out.String(), errOut.String())
 		}
 	}
@@ -223,7 +223,7 @@ func TestProgramPath(t *testing.T) {
 		t.Fatalf("help: %d %q", code, out.String())
 	}
 	out.Reset()
-	if code := run(nil, nil, &out, &errOut, buildinfo.Current(), d); code != ExitError || errOut.String() != "No such command. See /opt/msm/msm help\n" {
+	if code := run(nil, nil, &out, &errOut, buildinfo.Current(), d); code != ExitUsage || errOut.String() != "No such command. See /opt/msm/msm help\n" {
 		t.Fatalf("no command: %d %q", code, errOut.String())
 	}
 }

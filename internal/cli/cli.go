@@ -14,11 +14,6 @@ import (
 	"github.com/thehatchcloud/msm/internal/buildinfo"
 )
 
-const (
-	ExitOK    = 0
-	ExitError = 1
-)
-
 // Run is the process boundary: Cobra returns errors; only main exits.
 // A fresh command tree keeps flags and Viper state isolated per invocation.
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, info buildinfo.Info) int {
@@ -43,10 +38,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, info buildinf
 	case errors.Is(err, errNoSuchCommand):
 		// The legacy line exactly, without the "msm: " error prefix.
 		fmt.Fprintln(stderr, noSuchCommand(d.program))
-		return ExitError
 	case err != nil:
 		fmt.Fprintf(stderr, "msm: %v\n", err)
-		return ExitError
 	}
-	return ExitOK
+	return exitCode(err)
 }

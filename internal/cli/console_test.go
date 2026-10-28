@@ -44,7 +44,7 @@ func TestConsoleGrammar(t *testing.T) {
 			}
 			continue
 		}
-		if code != ExitError || !strings.Contains(errOut, want) {
+		if code != ExitUnavailable || !strings.Contains(errOut, want) {
 			t.Errorf("%v: %d %q; want an error naming screen", args, code, errOut)
 		}
 		if strings.Contains(errOut, "No such command") {
@@ -60,7 +60,7 @@ func TestConsoleGrammar(t *testing.T) {
 		{"save"}, {"save", "now"}, {"cmd"}, {"cmdlog"}, {"connected", "x"}, {"console", "x"},
 	} {
 		code, out, errOut := f.run(t, "", append([]string{"a"}, args...)...)
-		if code != ExitError || out != "" || !strings.HasPrefix(errOut, "No such command") && !strings.Contains(errOut, "command") {
+		if code != ExitUsage || out != "" || !strings.HasPrefix(errOut, "No such command") && !strings.Contains(errOut, "command") {
 			t.Errorf("%v: %d %q %q", args, code, out, errOut)
 		}
 	}
@@ -72,22 +72,22 @@ func TestConsoleAllTargets(t *testing.T) {
 	f.mustRun(t, "server", "create", "b")
 	for _, args := range [][]string{{"all", "console"}, {"all", "cmdlog", "list"}} {
 		code, _, errOut := f.run(t, "", args...)
-		if code != ExitError || !strings.Contains(errOut, "needs one server") {
+		if code != ExitUsage || !strings.Contains(errOut, "needs one server") {
 			t.Errorf("%v: %d %q", args, code, errOut)
 		}
 	}
 	// Every other command reaches every server and reports each failure.
 	code, _, errOut := f.run(t, "", "all", "say", "hi")
-	if code != ExitError || strings.Count(errOut, "screen is not installed") != 2 {
+	if code != ExitUnavailable || strings.Count(errOut, "screen is not installed") != 2 {
 		t.Fatalf("all say: %d %q", code, errOut)
 	}
 	if code, out, _ := f.run(t, "", "all", "wl", "list"); code != ExitOK || strings.Count(out, "No players are whitelisted.") != 2 {
 		t.Fatalf("all wl list: %d %q", code, out)
 	}
-	if code, _, errOut := f.run(t, "", "missing", "say", "hi"); code != ExitError || !strings.Contains(errOut, "no server with the name") {
+	if code, _, errOut := f.run(t, "", "missing", "say", "hi"); code != ExitNotFound || !strings.Contains(errOut, "no server with the name") {
 		t.Fatalf("missing: %d %q", code, errOut)
 	}
-	if code, _, errOut := f.run(t, "", "a", "say", "hi", "--timeout", "-1s"); code != ExitError || !strings.Contains(errOut, "--timeout") {
+	if code, _, errOut := f.run(t, "", "a", "say", "hi", "--timeout", "-1s"); code != ExitUsage || !strings.Contains(errOut, "--timeout") {
 		t.Fatalf("negative timeout: %d %q", code, errOut)
 	}
 }
@@ -97,7 +97,7 @@ func TestConnectedStopped(t *testing.T) {
 	f := newServerFixture(t)
 	f.mustRun(t, "server", "create", "a")
 	code, _, errOut := f.run(t, "", "a", "connected")
-	if code != ExitError || !strings.Contains(errOut, "screen is not installed") {
+	if code != ExitUnavailable || !strings.Contains(errOut, "screen is not installed") {
 		t.Fatalf("%d %q", code, errOut)
 	}
 }

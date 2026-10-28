@@ -53,6 +53,8 @@ type deps struct {
 	roller func(w io.Writer, o lifecycleOptions) (*maintenance.Roller, error)
 	// pruner builds the retention pruner.
 	pruner func(w io.Writer) (*maintenance.Pruner, error)
+	// globalConfig lists the global settings, writing import warnings to w.
+	globalConfig func(w io.Writer) ([]legacyconf.ConfigEntry, error)
 	// program is how the legacy messages name the executable ($0).
 	program string
 }
@@ -66,6 +68,7 @@ func defaultDeps() deps {
 	d.roller = hostRoller(d)
 	d.pruner = hostPruner(d)
 	d.stdio = hostStdio
+	d.globalConfig = hostGlobalConfig
 	return d
 }
 
@@ -194,7 +197,11 @@ func newServerListCommand(d deps) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List servers with their active state and whether they are running",
-		Args:  cobra.NoArgs,
+		Long: `List every server with whether it is meant to be running (active) and
+whether it is. With --format json the same information is printed as a
+versioned document (docs/cli.md); warnings still go to standard error.`,
+		Args:        cobra.NoArgs,
+		Annotations: map[string]string{annJSON: "true"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			m, err := d.servers(cmd.ErrOrStderr())
 			if err != nil {
@@ -206,6 +213,9 @@ func newServerListCommand(d deps) *cobra.Command {
 			}
 			warn(cmd.ErrOrStderr(), warnings)
 			out := cmd.OutOrStdout()
+			if jsonRequested(cmd) {
+				return writeStatus(out, list)
+			}
 			if len(list) == 0 {
 				_, err = fmt.Fprintln(out, "[There are no servers]")
 				return err
@@ -262,7 +272,7 @@ JAR, read the EULA and set eula=true in the server's eula.txt yourself.`,
 			}
 			c, err := m.Create(cmd.Context(), args[0])
 			if err != nil {
-				return err
+				return nameError(err)
 			}
 			warn(cmd.ErrOrStderr(), c.Warnings)
 			_, err = fmt.Fprintf(cmd.OutOrStdout(),
@@ -285,7 +295,7 @@ func newServerRenameCommand(d deps) *cobra.Command {
 			}
 			r, err := m.Rename(cmd.Context(), args[0], args[1])
 			if err != nil {
-				return err
+				return nameError(err)
 			}
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "Renamed server %q to %q.\n", r.From, r.To)
@@ -324,7 +334,7 @@ server is refused: stop it first.`,
 			out := cmd.OutOrStdout()
 			printPlan(out, p)
 			if p.State.Kind != servers.Stopped {
-				return fmt.Errorf("server %q is %s (%s); stop it before deleting it", p.Name, p.State.Kind, p.State.Detail)
+				return causedError{fmt.Sprintf("server %q is %s (%s); stop it before deleting it", p.Name, p.State.Kind, p.State.Detail), servers.ErrNotStopped}
 			}
 			if !yes {
 				ok, err := confirm(cmd, d, fmt.Sprintf("server %q", p.Name),
@@ -396,4 +406,13 @@ func confirm(cmd *cobra.Command, d deps, what, question, declined string) (bool,
 		return false, err
 	}
 	return true, nil
+}
+
+// nameError makes a name the grammar does not allow a usage error: "create"
+// and "rename" are about the name typed, not about a server that is missing.
+func nameError(err error) error {
+	if errors.Is(err, servers.ErrInvalidName) && !errors.Is(err, servers.ErrNotFound) {
+		return usageError{err}
+	}
+	return err
 }

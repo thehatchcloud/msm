@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/spf13/cobra"
 )
 
 // programName is the command's name in Cobra's own help and errors.
@@ -35,10 +37,11 @@ func programPath(arg0 string) string {
 	return programName
 }
 
-// legacyHelp is command_help from init/msm, verbatim, with %s for $0. It
-// lists every legacy command, including those the Go port has not
-// implemented yet; those answer with errNoSuchCommand until their tasks
-// land.
+// legacyHelp is command_help from init/msm, verbatim, with %s for $0.
+// TestLegacyHelpAndNoSuchCommand compares it with the source. Everything it
+// lists is implemented except update, which refuses (docs/cli.md); what the
+// list leaves out (all, --format, exit statuses) is in docs/cli.md and the
+// help topics.
 const legacyHelp = `Usage: %s command:
 
 --Setup Commands------------------------------------------------
@@ -116,4 +119,33 @@ var errNoSuchCommand = errors.New("no such command")
 
 func noSuchCommand(program string) string {
 	return "No such command. See " + program + " help"
+}
+
+// newHelpCommand is msm help: the legacy command list, or the help of one
+// command or topic. Words that name neither are the legacy answer.
+func newHelpCommand(d deps) *cobra.Command {
+	return &cobra.Command{
+		Use:   "help [command | topic]",
+		Short: "Show the command list, or help for one command or topic",
+		Long: "Show the command list. Give a command (msm help server delete) or one of the\ntopics " +
+			strings.Join(helpTopicNames(), ", ") + " for more.",
+		ValidArgsFunction: func(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return printLegacyHelp(cmd.OutOrStdout(), d.program)
+			}
+			if text, ok := helpTopics[args[0]]; ok && len(args) == 1 {
+				_, err := io.WriteString(cmd.OutOrStdout(), text)
+				return err
+			}
+			target, rest, err := cmd.Root().Find(args)
+			if err != nil || target == cmd.Root() || len(rest) > 0 {
+				return errNoSuchCommand
+			}
+			target.InitDefaultHelpFlag()
+			return target.Help()
+		},
+	}
 }

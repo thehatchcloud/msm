@@ -52,7 +52,7 @@ a terminal.`,
 				return err
 			}
 			if _, err := m.Target(args[0]); errors.Is(err, jars.ErrNotFound) {
-				return fmt.Errorf("there is no jar group with the name %q", args[0])
+				return causedError{fmt.Sprintf("there is no jar group with the name %q", args[0]), jars.ErrNotFound}
 			}
 			if len(refs) > 0 {
 				return m.Delete(args[0]) // refuses, naming the servers

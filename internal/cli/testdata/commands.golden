@@ -1,0 +1,1811 @@
+=== CMD-001 [signature] msm start
+exit: 0 (ok)
+--- stdout
+alpha: [INACTIVE] Server "alpha" leaving stopped, as this server is inactive.
+beta: [INACTIVE] Server "beta" leaving stopped, as this server is inactive.
+--- stderr
+
+=== CMD-001 [extra-argument] msm start extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-002 [signature] msm stop
+exit: 0 (ok)
+--- stdout
+No servers were running.
+alpha: Server "alpha" was NOT running.
+beta: Server "beta" was NOT running.
+--- stderr
+
+=== CMD-002 [extra-argument] msm stop extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-003 [signature] msm stop now
+exit: 0 (ok)
+--- stdout
+No servers were running.
+alpha: Server "alpha" was NOT running.
+beta: Server "beta" was NOT running.
+--- stderr
+
+=== CMD-003 [extra-argument] msm stop now extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-004 [signature] msm restart
+exit: 0 (ok)
+--- stdout
+No servers were running.
+Starting servers:
+Stopping servers:
+alpha: Server "alpha" was NOT running.
+alpha: [INACTIVE] Server "alpha" leaving stopped, as this server is inactive.
+beta: Server "beta" was NOT running.
+beta: [INACTIVE] Server "beta" leaving stopped, as this server is inactive.
+--- stderr
+
+=== CMD-004 [extra-argument] msm restart extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-005 [signature] msm restart now
+exit: 0 (ok)
+--- stdout
+No servers were running.
+Starting servers:
+Stopping servers:
+alpha: Server "alpha" was NOT running.
+alpha: [INACTIVE] Server "alpha" leaving stopped, as this server is inactive.
+beta: Server "beta" was NOT running.
+beta: [INACTIVE] Server "beta" leaving stopped, as this server is inactive.
+--- stderr
+
+=== CMD-005 [extra-argument] msm restart now extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-006 [signature] msm version
+exit: 0 (ok)
+--- stdout
+Minecraft Server Manager (Go port) test (commit )
+--- stderr
+
+=== CMD-006 [extra-argument] msm version extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+msm: unknown command "extra" for "msm version"
+
+=== CMD-007 [signature] msm config
+exit: 0 (ok)
+--- stdout
+DEBUG="false"
+USERNAME="$USER"
+SERVER_STORAGE_PATH="$TMP/servers"
+JAR_STORAGE_PATH="$TMP/jars"
+VERSIONING_STORAGE_PATH="/opt/msm/versioning"
+VERSIONING_FILE_EXTENSION="sh"
+RAMDISK_STORAGE_ENABLED="false"
+RAMDISK_STORAGE_PATH="/dev/shm/msm"
+WORLD_ARCHIVE_ENABLED="true"
+WORLD_RDIFF_PATH="/opt/msm/rdiff-backup/worlds"
+RDIFF_BACKUP_ENABLED="false"
+RDIFF_BACKUP_NICE="19"
+RDIFF_BACKUP_ROTATION="7"
+UPDATE_URL="https://raw.githubusercontent.com/msmhq/msm/latest"
+WORLD_ARCHIVE_PATH="$TMP/archives/worlds"
+LOG_ARCHIVE_PATH="$TMP/archives/logs"
+BACKUP_ARCHIVE_PATH="$TMP/archives/backups"
+RSYNC_BACKUP_ENABLED="false"
+WORLD_RSYNC_PATH="/opt/msm/rsync/worlds"
+JARGROUP_TARGET="target.txt"
+JARGROUP_DOWNLOAD_DIR="downloads"
+SERVER_PROPERTIES="server.properties"
+DEFAULT_USERNAME="$USER"
+DEFAULT_SCREEN_NAME="msm-{SERVER_NAME}"
+DEFAULT_VERSION="unknown"
+DEFAULT_WORLD_STORAGE_PATH="worldstorage"
+DEFAULT_WORLD_STORAGE_INACTIVE_PATH="worldstorage_inactive"
+DEFAULT_LOG_PATH="server.log"
+DEFAULT_WHITELIST_PATH="whitelist.json"
+DEFAULT_BANNED_PLAYERS_PATH="banned-players.json"
+DEFAULT_BANNED_IPS_PATH="banned-ips.json"
+DEFAULT_OPS_PATH="ops.json"
+DEFAULT_OPS_LIST=""
+DEFAULT_JAR_PATH="server.jar"
+DEFAULT_FLAG_ACTIVE_PATH="active"
+DEFAULT_COMPLETE_BACKUP_FOLLOW_SYMLINKS="false"
+DEFAULT_WORLDS_FLAG_INRAM="inram"
+DEFAULT_RAM="1024"
+DEFAULT_INVOCATION="java -Xms{RAM}M -Xmx{RAM}M -jar {JAR} nogui"
+DEFAULT_STOP_DELAY="10"
+DEFAULT_RESTART_DELAY="10"
+DEFAULT_MESSAGE_STOP="SERVER SHUTTING DOWN IN {DELAY} SECONDS!"
+DEFAULT_MESSAGE_STOP_ABORT="Server shut down aborted."
+DEFAULT_MESSAGE_RESTART="SERVER REBOOT IN {DELAY} SECONDS!"
+DEFAULT_MESSAGE_RESTART_ABORT="Server reboot aborted."
+DEFAULT_MESSAGE_WORLD_BACKUP_STARTED="Backing up world."
+DEFAULT_MESSAGE_WORLD_BACKUP_FINISHED="Backup complete."
+DEFAULT_MESSAGE_COMPLETE_BACKUP_STARTED="Backing up entire server."
+DEFAULT_MESSAGE_COMPLETE_BACKUP_FINISHED="Backup complete."
+DEFAULT_CONFIRM_SAVE_ON=""
+DEFAULT_CONFIRM_SAVE_OFF=""
+DEFAULT_CONFIRM_SAVE_ALL=""
+DEFAULT_CONFIRM_START=""
+DEFAULT_CONFIRM_KICK=""
+DEFAULT_CONFIRM_TIME_SET=""
+DEFAULT_CONFIRM_TIME_ADD=""
+DEFAULT_CONFIRM_TOGGLEDOWNFALL=""
+DEFAULT_CONFIRM_GAMEMODE=""
+DEFAULT_CONFIRM_GIVE=""
+DEFAULT_CONFIRM_XP=""
+--- stderr
+
+=== CMD-007 [extra-argument] msm config extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-008 [signature] msm update --noinput
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: update is not available in this build: self-update is replaced by verified release artifacts in a later task (DEV-006); nothing was changed, so install a new release of msm yourself
+
+=== CMD-009 [signature] msm server list
+exit: 0 (ok)
+--- stdout
+[INACTIVE] "alpha" is stopped. Everything is OK.
+[INACTIVE] "beta" is stopped. Everything is OK.
+--- stderr
+
+=== CMD-009 [extra-argument] msm server list extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+msm: unknown command "extra" for "msm server list"
+
+=== CMD-010 [signature] msm server create gamma
+exit: 0 (ok)
+--- stdout
+Created server "gamma" in $TMP/servers/gamma.
+Before starting it, choose a server JAR and accept the Minecraft EULA in $TMP/servers/gamma/eula.txt.
+--- stderr
+
+=== CMD-010 [missing-argument] msm server create
+exit: 2 (usage)
+--- stdout
+--- stderr
+msm: accepts 1 arg(s), received 0
+
+=== CMD-010 [extra-argument] msm server create gamma extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+msm: accepts 1 arg(s), received 2
+
+=== CMD-011 [signature] msm server delete alpha
+exit: 5 (refused)
+--- stdout
+Server "alpha" will be deleted:
+  Directory: $TMP/servers/alpha
+  Contents: $SIZE
+  Top level: banned-ips.json, banned-players.json, ops.json, server.properties, whitelist.json, worldstorage, worldstorage_inactive
+Backups, archived logs and the shared JAR store are not affected.
+--- stderr
+msm: refusing to delete server "alpha" without confirmation: standard input is not a terminal; pass --yes to confirm
+
+=== CMD-011 [missing-argument] msm server delete
+exit: 2 (usage)
+--- stdout
+--- stderr
+msm: accepts 1 arg(s), received 0
+
+=== CMD-011 [extra-argument] msm server delete alpha extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+msm: accepts 1 arg(s), received 2
+
+=== CMD-012 [signature] msm server rename alpha renamed
+exit: 0 (ok)
+--- stdout
+Renamed server "alpha" to "renamed".
+Note: world backups, complete backups and archived logs made under the old name keep that name.
+--- stderr
+
+=== CMD-012 [missing-argument] msm server rename alpha
+exit: 2 (usage)
+--- stdout
+--- stderr
+msm: accepts 2 arg(s), received 1
+
+=== CMD-012 [extra-argument] msm server rename alpha renamed extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+msm: accepts 2 arg(s), received 3
+
+=== CMD-013 [signature] msm jargroup list
+exit: 0 (ok)
+--- stdout
+paper
+--- stderr
+
+=== CMD-013 [extra-argument] msm jargroup list extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-014 [signature] msm jargroup create newgroup https://example.invalid/x.jar
+exit: 0 (ok)
+--- stdout
+Creating jar group... Done.
+--- stderr
+
+=== CMD-014 [missing-argument] msm jargroup create newgroup
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-014 [extra-argument] msm jargroup create newgroup https://example.invalid/x.jar extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-015 [signature] msm jargroup delete paper
+exit: 5 (refused)
+--- stdout
+--- stderr
+msm: refusing to delete jar group "paper" without confirmation: standard input is not a terminal; pass --yes to confirm
+
+=== CMD-015 [missing-argument] msm jargroup delete
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-015 [extra-argument] msm jargroup delete paper extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-016 [signature] msm jargroup rename paper renamed
+exit: 0 (ok)
+--- stdout
+Renamed jar group "paper" to "renamed".
+--- stderr
+
+=== CMD-016 [missing-argument] msm jargroup rename paper
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-016 [extra-argument] msm jargroup rename paper renamed extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-017 [signature] msm jargroup changeurl paper https://example.invalid/y.jar
+exit: 0 (ok)
+--- stdout
+Changing target URL... Done.
+--- stderr
+
+=== CMD-017 [missing-argument] msm jargroup changeurl paper
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-017 [extra-argument] msm jargroup changeurl paper https://example.invalid/y.jar extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-018 [signature] msm jargroup getlatest ghost
+exit: 4 (not-found)
+--- stdout
+--- stderr
+msm: jars: no such jar group "ghost"
+
+=== CMD-018 [missing-argument] msm jargroup getlatest
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-018 [extra-argument] msm jargroup getlatest ghost extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-019 [signature] msm help
+exit: 0 (ok)
+--- stdout
+Usage: msm command:
+
+--Setup Commands------------------------------------------------
+  server list                                   List servers
+  server create <name>                          Creates a new Minecraft server
+  server delete <name>                          Deletes an existing Minecraft server
+  server rename <name> <new-name>               Renames an existing Minecraft server
+
+--Server Management Commands------------------------------------
+  <server> start                                Starts a server
+  <server> stop [now]                           Stops a server after warning players, or right now
+  <server> restart [now]                        Restarts a server after warning players, or right now
+  <server> status                               Show the running/stopped status of a server
+  <server> connected                            List a servers connected players
+  <server> worlds list                          Lists the worlds a server has
+  <server> worlds load                          Creates links to worlds in storage for a server
+  <server> worlds ram <world>                   Toggles a world's "in RAM" status
+  <server> worlds todisk                        Synchronises any "in RAM" worlds to disk a server has
+  <server> worlds backup                        Makes a backup of all worlds a server has
+  <server> worlds on|off <world>                Activate or deactivate a world, inactive worlds are not backed up
+  <server> logroll                              Move a server log to a gziped archive, to reduce lag
+  <server> backup                               Makes a backup of an entire server directory
+  <server> jar <jargroup> [<file>]              Sets a server's jar file
+  <server> console                              Connects to the interactive console. Access may be limited
+  <server> config [<setting> <value>]           Lists server settings, or sets a specific setting.
+
+--Server Pass Through Commands----------------------------------
+  <server> wl on|off                            Enables/disables server whitelist checking
+  <server> wl add|remove <player>               Add/remove a player to/from a server's whitelist
+  <server> wl list                              List the players whitelisted for a server
+  <server> bl player add|remove <player>        Ban/pardon a player from/for a server
+  <server> bl ip add|remove <ip address>        Ban/pardon an IP address from/for a server
+  <server> bl list                              Lists the banned players and IP address for a server
+  <server> op add|remove <player>               Add/remove operator status for a player on a server
+  <server> op list                              Lists the operator players for a server
+  <server> gm survival|creative <player>        Change the game mode for a player on a server
+  <server> kick <player>                        Forcibly disconnect a player from a server
+  <server> say <message>                        Broadcast a (pink) message to all players on a server
+  <server> time set|add <number>                Set/increment time on a server (0-24000)
+  <server> toggledownfall                       Toggles rain and snow on a server
+  <server> give <player> <item> [amount] [data] Gives an entity to a player
+  <server> xp <player> <amount>                 Gives XP to, or takes away (when negative) XP from, a player
+  <server> save on|off                          Enable/disable writing world changes to file
+  <server> save all                             Force the writing of all non-saved world changes to file
+  <server> cmd <command>                        Send a command string to the server and return
+  <server> cmdlog <command>                     Same as 'cmd' but shows log output afterwards (Ctrl+C to exit)
+
+--Jar Commands--------------------------------------------------
+  jargroup list                                 List the stored jar files.
+  jargroup create <name> <download-url>         Create a new jar group, with a URL for new downloads
+  jargroup delete <name>                        Delete a jar group
+  jargroup rename <name> <new-name>             Rename a jar group
+  jargroup changeurl <name> <download-url>      Change the download URL for a jar group
+  jargroup getlatest <name>                     Download the latest jar file for a jar group
+
+--Global Commands-----------------------------------------------
+  start                                         Starts all active servers
+  stop [now]                                    Stops all running servers
+  restart [now]                                 Restarts all active servers
+  version                                       Prints the Minecraft Server Manager version installed
+  config                                        Displays a list of the config values used by MSM
+  update [--noinput]                            Replaces MSM files with the latest recommended versions
+--- stderr
+
+=== CMD-019 [extra-argument] msm help extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-020 [signature] msm alpha start
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: cannot start server "alpha": lifecycle: GNU screen is not installed
+
+=== CMD-020 [all] msm all start
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+  alpha: cannot start server "alpha": lifecycle: GNU screen is not installed
+  beta: cannot start server "beta": lifecycle: GNU screen is not installed
+msm: start: 2 of 2 servers failed
+
+=== CMD-020 [extra-argument] msm alpha start extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-021 [signature] msm alpha stop
+exit: 0 (ok)
+--- stdout
+Server "alpha" is not running.
+--- stderr
+
+=== CMD-021 [all] msm all stop
+exit: 0 (ok)
+--- stdout
+alpha: Server "alpha" is not running.
+beta: Server "beta" is not running.
+--- stderr
+
+=== CMD-021 [extra-argument] msm alpha stop extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-022 [signature] msm alpha stop now
+exit: 0 (ok)
+--- stdout
+Server "alpha" is not running.
+--- stderr
+
+=== CMD-022 [all] msm all stop now
+exit: 0 (ok)
+--- stdout
+alpha: Server "alpha" is not running.
+beta: Server "beta" is not running.
+--- stderr
+
+=== CMD-022 [extra-argument] msm alpha stop now extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-023 [signature] msm alpha restart
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: cannot start server "alpha": lifecycle: GNU screen is not installed
+
+=== CMD-023 [all] msm all restart
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+  alpha: cannot start server "alpha": lifecycle: GNU screen is not installed
+  beta: cannot start server "beta": lifecycle: GNU screen is not installed
+msm: restart: 2 of 2 servers failed
+
+=== CMD-023 [extra-argument] msm alpha restart extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-024 [signature] msm alpha restart now
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: cannot start server "alpha": lifecycle: GNU screen is not installed
+
+=== CMD-024 [all] msm all restart now
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+  alpha: cannot start server "alpha": lifecycle: GNU screen is not installed
+  beta: cannot start server "beta": lifecycle: GNU screen is not installed
+msm: restart: 2 of 2 servers failed
+
+=== CMD-024 [extra-argument] msm alpha restart now extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-025 [signature] msm alpha status
+exit: 0 (ok)
+--- stdout
+Server "alpha" is stopped.
+--- stderr
+
+=== CMD-025 [all] msm all status
+exit: 0 (ok)
+--- stdout
+alpha: Server "alpha" is stopped.
+beta: Server "beta" is stopped.
+--- stderr
+
+=== CMD-025 [extra-argument] msm alpha status extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-026 [signature] msm alpha connected
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-026 [all] msm all connected
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-026 [extra-argument] msm alpha connected extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-027 [signature] msm alpha worlds list
+exit: 0 (ok)
+--- stdout
+     main
+     spare
+--- stderr
+
+=== CMD-027 [all] msm all worlds list
+exit: 0 (ok)
+--- stdout
+alpha:      main
+alpha:      spare
+beta: There are no worlds in worldstorage.
+--- stderr
+
+=== CMD-027 [extra-argument] msm alpha worlds list extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-028 [signature] msm alpha worlds load
+exit: 0 (ok)
+--- stdout
+Maintaining world symbolic links...
+Done.
+--- stderr
+
+=== CMD-028 [all] msm all worlds load
+exit: 0 (ok)
+--- stdout
+alpha: Done.
+alpha: Maintaining world symbolic links...
+beta: Done.
+beta: Maintaining world symbolic links...
+--- stderr
+
+=== CMD-028 [extra-argument] msm alpha worlds load extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-029 [signature] msm alpha worlds ram main
+exit: 3 (config)
+--- stdout
+--- stderr
+msm: worlds: RAM worlds are not configured: RAMDISK_STORAGE_ENABLED is not "true"; RAM worlds are off by default and stay off until a RAM disk is prepared and the setting enabled
+
+=== CMD-029 [all] msm all worlds ram main
+exit: 2 (usage)
+--- stdout
+--- stderr
+msm: a world's RAM status is changed on one server at a time; name the server instead of "all"
+
+=== CMD-029 [missing-argument] msm alpha worlds ram
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-029 [extra-argument] msm alpha worlds ram main extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-030 [signature] msm alpha worlds todisk
+exit: 0 (ok)
+--- stdout
+RAM worlds are off for "alpha"; nothing to write to disk.
+--- stderr
+
+=== CMD-030 [all] msm all worlds todisk
+exit: 0 (ok)
+--- stdout
+alpha: RAM worlds are off for "alpha"; nothing to write to disk.
+beta: RAM worlds are off for "beta"; nothing to write to disk.
+--- stderr
+
+=== CMD-030 [extra-argument] msm alpha worlds todisk extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-031 [signature] msm alpha worlds backup
+exit: 0 (ok)
+--- stdout
+Server "alpha" is stopped; its files cannot change during the backup.
+Compressing main...
+Wrote $TMP/archives/worlds/alpha/main/$TIME.zip
+Backup took 0 seconds.
+--- stderr
+
+=== CMD-031 [all] msm all worlds backup
+exit: 1 (error)
+--- stdout
+alpha: Backup took 0 seconds.
+alpha: Compressing main...
+alpha: Server "alpha" is stopped; its files cannot change during the backup.
+alpha: Wrote $TMP/archives/worlds/alpha/main/$TIME.zip
+--- stderr
+  beta: backup: the server has no active worlds to back up
+msm: 1 of 2 servers failed:
+
+=== CMD-031 [extra-argument] msm alpha worlds backup extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-032 [signature] msm alpha worlds on main
+exit: 0 (ok)
+--- stdout
+World "main" is already activate.
+--- stderr
+
+=== CMD-032 [all] msm all worlds on main
+exit: 2 (usage)
+--- stdout
+--- stderr
+msm: when specifying "all" servers, "all" worlds must be specified also
+
+=== CMD-032 [missing-argument] msm alpha worlds on
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-032 [extra-argument] msm alpha worlds on main extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-033 [signature] msm alpha worlds off main
+exit: 0 (ok)
+--- stdout
+Moving world "main" to the inactive worldstorage directory... Done.
+--- stderr
+
+=== CMD-033 [all] msm all worlds off main
+exit: 2 (usage)
+--- stdout
+--- stderr
+msm: when specifying "all" servers, "all" worlds must be specified also
+
+=== CMD-033 [missing-argument] msm alpha worlds off
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-033 [extra-argument] msm alpha worlds off main extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-034 [signature] msm alpha logroll
+exit: 0 (ok)
+--- stdout
+No new log entries to roll. No change made.
+--- stderr
+
+=== CMD-034 [all] msm all logroll
+exit: 0 (ok)
+--- stdout
+alpha: No new log entries to roll. No change made.
+beta: No new log entries to roll. No change made.
+--- stderr
+
+=== CMD-034 [extra-argument] msm alpha logroll extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-035 [signature] msm alpha backup
+exit: 0 (ok)
+--- stdout
+Server "alpha" is stopped; its files cannot change during the backup.
+Compressing alpha...
+Wrote $TMP/archives/backups/alpha/$TIME.zip
+Backup took 0 seconds.
+--- stderr
+
+=== CMD-035 [all] msm all backup
+exit: 0 (ok)
+--- stdout
+alpha: Backup took 0 seconds.
+alpha: Compressing alpha...
+alpha: Server "alpha" is stopped; its files cannot change during the backup.
+alpha: Wrote $TMP/archives/backups/alpha/$TIME.zip
+beta: Backup took 0 seconds.
+beta: Compressing beta...
+beta: Server "beta" is stopped; its files cannot change during the backup.
+beta: Wrote $TMP/archives/backups/beta/$TIME.zip
+--- stderr
+
+=== CMD-035 [extra-argument] msm alpha backup extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-036 [signature] msm alpha jar paper
+exit: 1 (error)
+--- stdout
+--- stderr
+msm: jars: download failed: Get "https://example.invalid/paper.jar": the network is disabled in tests; server "alpha" still uses its current JAR
+
+=== CMD-036 [all] msm all jar paper
+exit: 1 (error)
+--- stdout
+--- stderr
+msm: alpha: jars: download failed: Get "https://example.invalid/paper.jar": the network is disabled in tests; server "alpha" still uses its current JAR
+msm: beta: jars: download failed: Get "https://example.invalid/paper.jar": the network is disabled in tests; server "beta" still uses its current JAR
+msm: jar: 2 of 2 servers failed: [alpha beta] (last: jars: download failed: Get "https://example.invalid/paper.jar": the network is disabled in tests; server "beta" still uses its current JAR)
+
+=== CMD-036 [missing-argument] msm alpha jar
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-036 [extra-argument] msm alpha jar paper extra
+exit: 4 (not-found)
+--- stdout
+--- stderr
+msm: jars: no such JAR in the jar group: there is no jar named "extra" in jargroup "paper"
+
+=== CMD-037 [signature] msm alpha jar paper x.jar
+exit: 4 (not-found)
+--- stdout
+--- stderr
+msm: jars: no such JAR in the jar group: there is no jar named "x.jar" in jargroup "paper"
+
+=== CMD-037 [all] msm all jar paper x.jar
+exit: 4 (not-found)
+--- stdout
+--- stderr
+msm: alpha: jars: no such JAR in the jar group: there is no jar named "x.jar" in jargroup "paper"
+msm: beta: jars: no such JAR in the jar group: there is no jar named "x.jar" in jargroup "paper"
+msm: jar: 2 of 2 servers failed: [alpha beta] (last: jars: no such JAR in the jar group: there is no jar named "x.jar" in jargroup "paper")
+
+=== CMD-037 [missing-argument] msm alpha jar paper
+exit: 1 (error)
+--- stdout
+--- stderr
+msm: jars: download failed: Get "https://example.invalid/paper.jar": the network is disabled in tests; server "alpha" still uses its current JAR
+
+=== CMD-037 [extra-argument] msm alpha jar paper x.jar extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-038 [signature] msm alpha console
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-038 [all] msm all console
+exit: 2 (usage)
+--- stdout
+--- stderr
+msm: console: this command needs one server: "console" cannot be sent to all servers at once
+
+=== CMD-038 [extra-argument] msm alpha console extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-039 [signature] msm alpha config
+exit: 0 (ok)
+--- stdout
+msm-username="$USER"
+msm-screen-name="msm-alpha"
+msm-version="unknown"
+msm-world-storage-path="$TMP/servers/alpha/worldstorage"
+msm-world-storage-inactive-path="$TMP/servers/alpha/worldstorage_inactive"
+msm-log-path="$TMP/servers/alpha/logs/latest.log"
+msm-whitelist-path="$TMP/servers/alpha/whitelist.json"
+msm-banned-players-path="$TMP/servers/alpha/banned-players.json"
+msm-banned-ips-path="$TMP/servers/alpha/banned-ips.json"
+msm-ops-path="$TMP/servers/alpha/ops.json"
+msm-ops-list=""
+msm-jar-path="$TMP/servers/alpha/server.jar"
+msm-flag-active-path="$TMP/servers/alpha/active"
+msm-complete-backup-follow-symlinks="false"
+msm-worlds-flag-inram="inram"
+msm-ram="1024"
+msm-invocation="java -Xms1024M -Xmx1024M -jar $TMP/servers/alpha/server.jar nogui"
+msm-stop-delay="10"
+msm-restart-delay="10"
+msm-message-stop="SERVER SHUTTING DOWN IN 10 SECONDS!"
+msm-message-stop-abort="Server shut down aborted."
+msm-message-restart="SERVER REBOOT IN 10 SECONDS!"
+msm-message-restart-abort="Server reboot aborted."
+msm-message-world-backup-started="Backing up world."
+msm-message-world-backup-finished="Backup complete."
+msm-message-complete-backup-started="Backing up entire server."
+msm-message-complete-backup-finished="Backup complete."
+msm-confirm-save-on=""
+msm-confirm-save-off=""
+msm-confirm-save-all=""
+msm-confirm-start=""
+msm-confirm-kick=""
+msm-confirm-time-set=""
+msm-confirm-time-add=""
+msm-confirm-toggledownfall=""
+msm-confirm-gamemode=""
+msm-confirm-give=""
+msm-confirm-xp=""
+--- stderr
+
+=== CMD-039 [all] msm all config
+exit: 0 (ok)
+--- stdout
+alpha: msm-banned-ips-path="$TMP/servers/alpha/banned-ips.json"
+alpha: msm-banned-players-path="$TMP/servers/alpha/banned-players.json"
+alpha: msm-complete-backup-follow-symlinks="false"
+alpha: msm-confirm-gamemode=""
+alpha: msm-confirm-give=""
+alpha: msm-confirm-kick=""
+alpha: msm-confirm-save-all=""
+alpha: msm-confirm-save-off=""
+alpha: msm-confirm-save-on=""
+alpha: msm-confirm-start=""
+alpha: msm-confirm-time-add=""
+alpha: msm-confirm-time-set=""
+alpha: msm-confirm-toggledownfall=""
+alpha: msm-confirm-xp=""
+alpha: msm-flag-active-path="$TMP/servers/alpha/active"
+alpha: msm-invocation="java -Xms1024M -Xmx1024M -jar $TMP/servers/alpha/server.jar nogui"
+alpha: msm-jar-path="$TMP/servers/alpha/server.jar"
+alpha: msm-log-path="$TMP/servers/alpha/logs/latest.log"
+alpha: msm-message-complete-backup-finished="Backup complete."
+alpha: msm-message-complete-backup-started="Backing up entire server."
+alpha: msm-message-restart-abort="Server reboot aborted."
+alpha: msm-message-restart="SERVER REBOOT IN 10 SECONDS!"
+alpha: msm-message-stop-abort="Server shut down aborted."
+alpha: msm-message-stop="SERVER SHUTTING DOWN IN 10 SECONDS!"
+alpha: msm-message-world-backup-finished="Backup complete."
+alpha: msm-message-world-backup-started="Backing up world."
+alpha: msm-ops-list=""
+alpha: msm-ops-path="$TMP/servers/alpha/ops.json"
+alpha: msm-ram="1024"
+alpha: msm-restart-delay="10"
+alpha: msm-screen-name="msm-alpha"
+alpha: msm-stop-delay="10"
+alpha: msm-username="$USER"
+alpha: msm-version="unknown"
+alpha: msm-whitelist-path="$TMP/servers/alpha/whitelist.json"
+alpha: msm-world-storage-inactive-path="$TMP/servers/alpha/worldstorage_inactive"
+alpha: msm-world-storage-path="$TMP/servers/alpha/worldstorage"
+alpha: msm-worlds-flag-inram="inram"
+beta: msm-banned-ips-path="$TMP/servers/beta/banned-ips.json"
+beta: msm-banned-players-path="$TMP/servers/beta/banned-players.json"
+beta: msm-complete-backup-follow-symlinks="false"
+beta: msm-confirm-gamemode=""
+beta: msm-confirm-give=""
+beta: msm-confirm-kick=""
+beta: msm-confirm-save-all=""
+beta: msm-confirm-save-off=""
+beta: msm-confirm-save-on=""
+beta: msm-confirm-start=""
+beta: msm-confirm-time-add=""
+beta: msm-confirm-time-set=""
+beta: msm-confirm-toggledownfall=""
+beta: msm-confirm-xp=""
+beta: msm-flag-active-path="$TMP/servers/beta/active"
+beta: msm-invocation="java -Xms1024M -Xmx1024M -jar $TMP/servers/beta/server.jar nogui"
+beta: msm-jar-path="$TMP/servers/beta/server.jar"
+beta: msm-log-path="$TMP/servers/beta/logs/latest.log"
+beta: msm-message-complete-backup-finished="Backup complete."
+beta: msm-message-complete-backup-started="Backing up entire server."
+beta: msm-message-restart-abort="Server reboot aborted."
+beta: msm-message-restart="SERVER REBOOT IN 10 SECONDS!"
+beta: msm-message-stop-abort="Server shut down aborted."
+beta: msm-message-stop="SERVER SHUTTING DOWN IN 10 SECONDS!"
+beta: msm-message-world-backup-finished="Backup complete."
+beta: msm-message-world-backup-started="Backing up world."
+beta: msm-ops-list=""
+beta: msm-ops-path="$TMP/servers/beta/ops.json"
+beta: msm-ram="1024"
+beta: msm-restart-delay="10"
+beta: msm-screen-name="msm-beta"
+beta: msm-stop-delay="10"
+beta: msm-username="$USER"
+beta: msm-version="unknown"
+beta: msm-whitelist-path="$TMP/servers/beta/whitelist.json"
+beta: msm-world-storage-inactive-path="$TMP/servers/beta/worldstorage_inactive"
+beta: msm-world-storage-path="$TMP/servers/beta/worldstorage"
+beta: msm-worlds-flag-inram="inram"
+--- stderr
+
+=== CMD-039 [extra-argument] msm alpha config extra
+exit: 4 (not-found)
+--- stdout
+--- stderr
+msm: servers: property is not set: "extra" in server "alpha"
+
+=== CMD-040 [signature] msm alpha config motd
+exit: 4 (not-found)
+--- stdout
+--- stderr
+msm: servers: property is not set: "motd" in server "alpha"
+
+=== CMD-040 [all] msm all config motd
+exit: 4 (not-found)
+--- stdout
+--- stderr
+msm: server "alpha": servers: property is not set: "motd" in server "alpha"
+server "beta": servers: property is not set: "motd" in server "beta"
+
+=== CMD-040 [missing-argument] msm alpha config
+exit: 0 (ok)
+--- stdout
+msm-username="$USER"
+msm-screen-name="msm-alpha"
+msm-version="unknown"
+msm-world-storage-path="$TMP/servers/alpha/worldstorage"
+msm-world-storage-inactive-path="$TMP/servers/alpha/worldstorage_inactive"
+msm-log-path="$TMP/servers/alpha/logs/latest.log"
+msm-whitelist-path="$TMP/servers/alpha/whitelist.json"
+msm-banned-players-path="$TMP/servers/alpha/banned-players.json"
+msm-banned-ips-path="$TMP/servers/alpha/banned-ips.json"
+msm-ops-path="$TMP/servers/alpha/ops.json"
+msm-ops-list=""
+msm-jar-path="$TMP/servers/alpha/server.jar"
+msm-flag-active-path="$TMP/servers/alpha/active"
+msm-complete-backup-follow-symlinks="false"
+msm-worlds-flag-inram="inram"
+msm-ram="1024"
+msm-invocation="java -Xms1024M -Xmx1024M -jar $TMP/servers/alpha/server.jar nogui"
+msm-stop-delay="10"
+msm-restart-delay="10"
+msm-message-stop="SERVER SHUTTING DOWN IN 10 SECONDS!"
+msm-message-stop-abort="Server shut down aborted."
+msm-message-restart="SERVER REBOOT IN 10 SECONDS!"
+msm-message-restart-abort="Server reboot aborted."
+msm-message-world-backup-started="Backing up world."
+msm-message-world-backup-finished="Backup complete."
+msm-message-complete-backup-started="Backing up entire server."
+msm-message-complete-backup-finished="Backup complete."
+msm-confirm-save-on=""
+msm-confirm-save-off=""
+msm-confirm-save-all=""
+msm-confirm-start=""
+msm-confirm-kick=""
+msm-confirm-time-set=""
+msm-confirm-time-add=""
+msm-confirm-toggledownfall=""
+msm-confirm-gamemode=""
+msm-confirm-give=""
+msm-confirm-xp=""
+--- stderr
+
+=== CMD-040 [extra-argument] msm alpha config motd extra
+exit: 0 (ok)
+--- stdout
+Added motd="extra" to $TMP/servers/alpha/server.properties.
+The server is stopped; the change takes effect the next time it starts.
+--- stderr
+
+=== CMD-041 [signature] msm alpha config motd hello
+exit: 0 (ok)
+--- stdout
+Added motd="hello" to $TMP/servers/alpha/server.properties.
+The server is stopped; the change takes effect the next time it starts.
+--- stderr
+
+=== CMD-041 [all] msm all config motd hello
+exit: 0 (ok)
+--- stdout
+alpha: Added motd="hello" to $TMP/servers/alpha/server.properties.
+alpha: The server is stopped; the change takes effect the next time it starts.
+beta: Added motd="hello" to $TMP/servers/beta/server.properties.
+beta: The server is stopped; the change takes effect the next time it starts.
+--- stderr
+
+=== CMD-041 [missing-argument] msm alpha config motd
+exit: 4 (not-found)
+--- stdout
+--- stderr
+msm: servers: property is not set: "motd" in server "alpha"
+
+=== CMD-041 [extra-argument] msm alpha config motd hello extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-042 [signature] msm alpha whitelist on
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-042 [all] msm all whitelist on
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-042 [alias] msm alpha wl on
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-042 [all] msm all wl on
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-042 [extra-argument] msm alpha whitelist on extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-043 [signature] msm alpha whitelist off
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-043 [all] msm all whitelist off
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-043 [alias] msm alpha wl off
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-043 [all] msm all wl off
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-043 [extra-argument] msm alpha whitelist off extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-044 [signature] msm alpha whitelist add hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-044 [all] msm all whitelist add hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-044 [alias] msm alpha wl add hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-044 [all] msm all wl add hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-044 [missing-argument] msm alpha whitelist add
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-045 [signature] msm alpha whitelist remove hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-045 [all] msm all whitelist remove hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-045 [alias] msm alpha wl remove hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-045 [all] msm all wl remove hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-045 [missing-argument] msm alpha whitelist remove
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-046 [signature] msm alpha whitelist list
+exit: 0 (ok)
+--- stdout
+No players are whitelisted.
+--- stderr
+
+=== CMD-046 [all] msm all whitelist list
+exit: 0 (ok)
+--- stdout
+No players are whitelisted.
+No players are whitelisted.
+--- stderr
+
+=== CMD-046 [alias] msm alpha wl list
+exit: 0 (ok)
+--- stdout
+No players are whitelisted.
+--- stderr
+
+=== CMD-046 [all] msm all wl list
+exit: 0 (ok)
+--- stdout
+No players are whitelisted.
+No players are whitelisted.
+--- stderr
+
+=== CMD-046 [extra-argument] msm alpha whitelist list extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-047 [signature] msm alpha blacklist player add hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-047 [all] msm all blacklist player add hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-047 [alias] msm alpha bl player add hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-047 [all] msm all bl player add hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-047 [missing-argument] msm alpha blacklist player add
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-048 [signature] msm alpha blacklist player remove hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-048 [all] msm all blacklist player remove hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-048 [alias] msm alpha bl player remove hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-048 [all] msm all bl player remove hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-048 [missing-argument] msm alpha blacklist player remove
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-049 [signature] msm alpha blacklist ip add hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-049 [all] msm all blacklist ip add hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-049 [alias] msm alpha bl ip add hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-049 [all] msm all bl ip add hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-049 [missing-argument] msm alpha blacklist ip add
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-050 [signature] msm alpha blacklist ip remove hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-050 [all] msm all blacklist ip remove hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-050 [alias] msm alpha bl ip remove hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-050 [all] msm all bl ip remove hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-050 [missing-argument] msm alpha blacklist ip remove
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-051 [signature] msm alpha blacklist list
+exit: 0 (ok)
+--- stdout
+The blacklist is empty.
+--- stderr
+
+=== CMD-051 [all] msm all blacklist list
+exit: 0 (ok)
+--- stdout
+The blacklist is empty.
+The blacklist is empty.
+--- stderr
+
+=== CMD-051 [alias] msm alpha bl list
+exit: 0 (ok)
+--- stdout
+The blacklist is empty.
+--- stderr
+
+=== CMD-051 [all] msm all bl list
+exit: 0 (ok)
+--- stdout
+The blacklist is empty.
+The blacklist is empty.
+--- stderr
+
+=== CMD-051 [extra-argument] msm alpha blacklist list extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-052 [signature] msm alpha operator add hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-052 [all] msm all operator add hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-052 [alias] msm alpha op add hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-052 [all] msm all op add hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-052 [missing-argument] msm alpha operator add
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-053 [signature] msm alpha operator remove hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-053 [all] msm all operator remove hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-053 [alias] msm alpha op remove hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-053 [all] msm all op remove hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-053 [missing-argument] msm alpha operator remove
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-054 [signature] msm alpha operator list
+exit: 0 (ok)
+--- stdout
+No players are operators.
+--- stderr
+
+=== CMD-054 [all] msm all operator list
+exit: 0 (ok)
+--- stdout
+No players are operators.
+No players are operators.
+--- stderr
+
+=== CMD-054 [alias] msm alpha op list
+exit: 0 (ok)
+--- stdout
+No players are operators.
+--- stderr
+
+=== CMD-054 [all] msm all op list
+exit: 0 (ok)
+--- stdout
+No players are operators.
+No players are operators.
+--- stderr
+
+=== CMD-054 [extra-argument] msm alpha operator list extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-055 [signature] msm alpha gamemode survival Steve
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-055 [all] msm all gamemode survival Steve
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-055 [alias] msm alpha gm survival Steve
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-055 [all] msm all gm survival Steve
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-055 [missing-argument] msm alpha gamemode survival
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-056 [signature] msm alpha kick hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-056 [all] msm all kick hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-056 [missing-argument] msm alpha kick
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-057 [signature] msm alpha say hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-057 [all] msm all say hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-057 [missing-argument] msm alpha say
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-058 [signature] msm alpha time set 6000
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-058 [all] msm all time set 6000
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-058 [missing-argument] msm alpha time set
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-058 [extra-argument] msm alpha time set 6000 extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-059 [signature] msm alpha time add 100
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-059 [all] msm all time add 100
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-059 [missing-argument] msm alpha time add
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-059 [extra-argument] msm alpha time add 100 extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-060 [signature] msm alpha toggledownfall
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-060 [all] msm all toggledownfall
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-060 [alias] msm alpha tdf
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-060 [all] msm all tdf
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-060 [extra-argument] msm alpha toggledownfall extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-061 [signature] msm alpha give Steve stone
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-061 [all] msm all give Steve stone
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-061 [missing-argument] msm alpha give Steve
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-061 [extra-argument] msm alpha give Steve stone extra
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-062 [signature] msm alpha give x x x
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-062 [all] msm all give x x x
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-062 [missing-argument] msm alpha give x x
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-062 [extra-argument] msm alpha give x x x extra
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-063 [signature] msm alpha give x x x x
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-063 [all] msm all give x x x x
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-063 [missing-argument] msm alpha give x x x
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-063 [extra-argument] msm alpha give x x x x extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-064 [signature] msm alpha xp Steve 5
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-064 [all] msm all xp Steve 5
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-064 [missing-argument] msm alpha xp Steve
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-064 [extra-argument] msm alpha xp Steve 5 extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-065 [signature] msm alpha save on
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-065 [all] msm all save on
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-065 [extra-argument] msm alpha save on extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-066 [signature] msm alpha save off
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-066 [all] msm all save off
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-066 [extra-argument] msm alpha save off extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-067 [signature] msm alpha save all
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-067 [all] msm all save all
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-067 [extra-argument] msm alpha save all extra
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-068 [signature] msm alpha cmd hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-068 [all] msm all cmd hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+console: GNU screen is not installed: server "beta" cannot be inspected
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-068 [missing-argument] msm alpha cmd
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+
+=== CMD-069 [signature] msm alpha cmdlog hello world
+exit: 6 (unavailable)
+--- stdout
+--- stderr
+msm: console: GNU screen is not installed: server "alpha" cannot be inspected
+
+=== CMD-069 [all] msm all cmdlog hello world
+exit: 2 (usage)
+--- stdout
+--- stderr
+msm: console: this command needs one server: "cmdlog" cannot be sent to all servers at once
+
+=== CMD-069 [missing-argument] msm alpha cmdlog
+exit: 2 (usage)
+--- stdout
+--- stderr
+No such command. See msm help
+

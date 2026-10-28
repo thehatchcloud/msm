@@ -1,21 +1,21 @@
 # Go development and build workflow
 
-This is an alpha, not a production manager. The Go executable supports
-`help`, `--help`, `-h`, `version`, `--version`, Cobra-generated `completion`,
-and the P05 instance commands `server list`, `server create`, `server rename`
-and `server delete` (see [Server instances](#server-instances-p05)), the P06
-lifecycle commands, the P07 JAR commands, the P08 console and player
-commands (see [Console and player commands](#console-and-player-commands-p08))
-the P09 world commands `worlds list|load|on|off` (see [Worlds](#worlds-p09)) and
-the P10 backup commands `worlds backup` and `backup`, which P11 extends with
-hard-link snapshots and rdiff-backup (see [Backups](#backups-p10)), and the
-P12 commands `worlds ram` and `worlds todisk` (see [RAM-backed
-worlds](ram-worlds.md)).
-Every other management command returns a nonzero error. Viper reads the small native
-configuration schema described below. No Go command runs the legacy manager or
-launches Minecraft; the screen backend (P04) is a library that later lifecycle
-and console tasks will call, and that `server` commands use only to check
-whether a server is running.
+This is an alpha, not a production manager. The Go executable runs every
+command of the legacy manager's `help` list except `update` (see
+[docs/cli.md](cli.md)): the P05 instance commands (see [Server
+instances](#server-instances-p05)), the P06 lifecycle commands, the P07 JAR
+commands, the P08 console and player commands (see [Console and player
+commands](#console-and-player-commands-p08)), the P09 world commands (see
+[Worlds](#worlds-p09)), the P10 and P11 backups (see [Backups](#backups-p10)),
+the P12 RAM worlds (see [RAM-backed worlds](ram-worlds.md)), the P13 log
+rolling and scheduled maintenance (see [maintenance](maintenance.md)) and the
+P14 `config`, `help`, `version`, Cobra-generated `completion` and `--format
+json` (see [CLI, completion and parity](#cli-completion-and-parity-p14)).
+`update` is recognised and refuses with a named status until P15 (DEV-006).
+Viper reads the small native configuration schema described below. No Go
+command runs the legacy manager; the manager's runtime logic is Go, and the
+external programs it can use (GNU screen, Java, and optionally rdiff-backup)
+are documented with the commands that need them.
 
 ## Toolchain and dependencies
 
@@ -144,7 +144,8 @@ been validated on every machine. P04 and P16 own that validation.
 - `internal/lifecycle`: start, stop, restart and status for one server,
   every server (`all`) or the global set, with countdowns, deadlines and
   bounded bulk concurrency.
-- `compatibility`: Go tests verifying P01 source inventories and safe fixtures.
+- `compatibility`: Go tests verifying P01 source inventories and safe fixtures,
+  and the parity matrix (`parity.tsv`).
 
 Do not add a package for every future feature in advance. Add manager
 packages when their implementing tasks need them.
@@ -1181,6 +1182,84 @@ rejected. It needs a JDK and network access to build, so it is skipped unless
 `TestWorldEditSnapshotLayout` is a Go mirror of the same rules that always
 runs. No live Minecraft server with the WorldEdit plugin and a `//snapshot`
 command was run: that is P16 work.
+
+## CLI, completion and parity (P14)
+
+[docs/cli.md](cli.md) is the user-facing reference for what this section
+describes: targets, settings, `--format json`, exit statuses, unattended use
+and completion.
+
+### Dispatch and errors
+
+`internal/cli/root.go` builds the Cobra tree; the server-first words
+(`msm <server> <command>`) are not Cobra subcommands, so the root command's
+`RunE` hands them to `runServerCommand` (`lifecycle.go`), which routes to the
+console, jar, config, backup, logroll and worlds handlers. A line that matches
+no signature is `errNoSuchCommand` and prints the legacy
+`No such command. See <program> help`.
+
+`exitcodes.go` owns the exit statuses. `exitCode` maps an error to a status by
+the sentinel it wraps (`errors.Is`), so a package reports a cause and the
+command line decides what it means; a message written for the user keeps its
+cause with `causedError`, and a failure to match the grammar is a
+`usageError`. `markUsage` wraps every Cobra argument validator and
+`SetFlagErrorFunc` every flag error, so Cobra's wording keeps its text and
+gains status 2. Add a package sentinel to `exitCode`'s table, not a special
+case in a command.
+
+### Per-server settings
+
+`internal/servers/config.go` implements `ConfigList`, `ConfigGet` and
+`ConfigSet`. A write loads the properties file with `serverprops`, which keeps
+comments, blank lines and unknown keys byte for byte, sets every exact copy of
+the key, re-resolves the server (`legacyconf.ResolveServer`) to validate
+`msm-invocation`, `msm-ram`, `msm-jar-path` and `msm-screen-name`, and
+replaces the file atomically under `LockServer`. `SettingEffect` classifies
+each registered setting as immediate, applied at the next start, or changeable
+only while stopped; add a new registered setting's class there, and
+`TestSettingEffectCoversEveryRegisteredSetting` will keep it from panicking.
+`msm config` is `legacyconf.GlobalEntries`, whose table
+`TestGlobalSettingsMatchInventory` keeps identical to
+`compatibility/settings.tsv`.
+
+### Output formats
+
+`format.go` defines the JSON documents. `SchemaVersion` and
+`docs/schema/status-v1.json` are one contract: `TestStatusSchemaMatchesTheDocument`
+fails when the Go type and the schema disagree in either direction, and the
+tests decode with `DisallowUnknownFields`, so a field cannot be added without
+touching a test. A command has a JSON form only if it carries the `annJSON`
+annotation (or is a server-first `status` / `config` listing); `--format json`
+anywhere else is a usage error.
+
+### Completion
+
+`complete.go` is the Go port of `bash_completion/msm`. Cobra's `__complete`
+entry point calls `completeServerFirst` for the root command and the
+`ValidArgsFunction`s `attachCompletions` sets; the generated scripts in
+`completions/` only call the binary. Everything completion reads is bounded
+and filtered by `completableName`, and an unreadable configuration yields no
+candidates (never output). After changing a command, run `make completions`
+if the scripts changed (`TestShippedCompletionsAreCurrent`).
+
+### Tests and the parity matrix
+
+* `internal/cli/golden_test.go` generates a command line for every row of
+  `compatibility/commands.tsv`, each alias, `all`, and a missing and extra
+  argument; checks that registered lines are recognised, that arity errors are
+  usage errors (a shortened line that is another registered signature is not
+  one), and that no command reads standard input; and compares exit status,
+  stdout and stderr with `internal/cli/testdata/commands.golden`. It uses a
+  fixture without GNU screen and with the network disabled. After a reviewed
+  behavior change, run `make golden` and review the diff.
+* `completion`, `config`, `format`, `exitcodes` and `settings_parity` tests in
+  `internal/cli` cover the rest of this task; the existing P05 to P13 CLI tests
+  were updated to the named statuses.
+* `compatibility/parity.tsv` is the parity matrix and
+  `compatibility/parity_test.go` verifies it; see
+  [docs/compatibility/parity.md](compatibility/parity.md). A new command,
+  setting or surface in the inventories needs a row, and a row needs a real
+  implementation file and test function.
 
 ## GitHub Actions
 
