@@ -38,6 +38,11 @@ type serverFixture struct {
 	terminal bool
 	// stdin, when set, replaces the string a run is given as standard input.
 	stdin io.Reader
+	// info, updateEnv and installEnv, when set, replace the development
+	// build and the real host the update and install commands run against.
+	info       buildinfo.Info
+	updateEnv  updateEnv
+	installEnv installEnv
 }
 
 // newServerFixture points MSM_CONF at a temporary msm.conf whose storage
@@ -144,7 +149,12 @@ func (f *serverFixture) run(t *testing.T, stdin string, args ...string) (int, st
 	if f.stdin != nil {
 		in = f.stdin
 	}
-	code := run(args, in, &out, &errOut, buildinfo.Info{Version: "test"}, d)
+	d.update, d.install = f.updateEnv, f.installEnv
+	info := f.info
+	if info.Version == "" {
+		info.Version = "test"
+	}
+	code := run(args, in, &out, &errOut, info, d)
 	return code, out.String(), errOut.String()
 }
 

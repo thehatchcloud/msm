@@ -162,7 +162,7 @@ No such command. See msm help
 exit: 6 (unavailable)
 --- stdout
 --- stderr
-msm: update is not available in this build: self-update is replaced by verified release artifacts in a later task (DEV-006); nothing was changed, so install a new release of msm yourself
+msm: update is not available in this build: this build has no trusted release signing key (it is a development build); nothing was changed, so install a release build of msm
 
 === CMD-009 [signature] msm server list
 exit: 0 (ok)

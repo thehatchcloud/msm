@@ -216,19 +216,3 @@ func TestServerConfigJSON(t *testing.T) {
 		}
 	}
 }
-
-func TestUpdateIsRecognisedButUnavailable(t *testing.T) {
-	f := newServerFixture(t)
-	for _, args := range [][]string{{"update"}, {"update", "--noinput"}} {
-		code, out, errOut := f.run(t, "", args...)
-		if code != ExitUnavailable || out != "" || !strings.Contains(errOut, "not available in this build") || strings.Contains(errOut, "No such command") {
-			t.Errorf("msm %v = %d %q %q", args, code, out, errOut)
-		}
-	}
-	if code, _, errOut := f.run(t, "", "update", "--unknown"); code != ExitUsage {
-		t.Errorf("update --unknown = %d %q", code, errOut)
-	}
-	if code, _, errOut := f.run(t, "", "update", "now"); code != ExitUsage || !strings.HasPrefix(errOut, "No such command") {
-		t.Errorf("update now = %d %q", code, errOut)
-	}
-}

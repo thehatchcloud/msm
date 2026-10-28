@@ -181,25 +181,3 @@ func (p *prefixWriter) Write(b []byte) (int, error) {
 	}
 	return len(b), nil
 }
-
-// newUpdateCommand is msm update [--noinput]. The self-updater is replaced
-// by verified release artifacts in P15 (DEV-006); until then the command is
-// recognised and says so, rather than being "No such command".
-func newUpdateCommand() *cobra.Command {
-	var noinput bool
-	cmd := &cobra.Command{
-		Use:   "update [--noinput]",
-		Short: "Replace MSM with the latest release (not yet available)",
-		Long: `The legacy update downloaded scripts with certificate checks disabled and
-replaced them in place. The Go port will update only from a verified release
-artifact for its platform (deviation DEV-006, task P15). Until then this
-command changes nothing and exits with status 6; install a new release of msm
-yourself.`,
-		Args: exactArgs(0),
-		RunE: func(*cobra.Command, []string) error {
-			return fmt.Errorf("update is %w: self-update is replaced by verified release artifacts in a later task (DEV-006); nothing was changed, so install a new release of msm yourself", errUnavailable)
-		},
-	}
-	cmd.Flags().BoolVar(&noinput, "noinput", false, "answer yes to the update prompt (accepted for compatibility)")
-	return cmd
-}

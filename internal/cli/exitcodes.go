@@ -11,6 +11,7 @@ import (
 	"github.com/thehatchcloud/msm/internal/console"
 	"github.com/thehatchcloud/msm/internal/filelock"
 	"github.com/thehatchcloud/msm/internal/identity"
+	"github.com/thehatchcloud/msm/internal/install"
 	"github.com/thehatchcloud/msm/internal/jars"
 	"github.com/thehatchcloud/msm/internal/legacyconf"
 	"github.com/thehatchcloud/msm/internal/lifecycle"
@@ -19,6 +20,7 @@ import (
 	"github.com/thehatchcloud/msm/internal/screen"
 	"github.com/thehatchcloud/msm/internal/serverprops"
 	"github.com/thehatchcloud/msm/internal/servers"
+	updater "github.com/thehatchcloud/msm/internal/update"
 	"github.com/thehatchcloud/msm/internal/worlds"
 )
 
@@ -109,17 +111,19 @@ func exitCode(err error) int {
 		return ExitUsage
 	case errors.As(err, &syntax), is(legacyconf.ErrUnsafeInvocation, legacyconf.ErrNoOwner, lifecycle.ErrSettings,
 		backup.ErrSettings, backup.ErrDisabled, worlds.ErrRAMConfig, jars.ErrInvalidTarget, jars.ErrNoTarget,
-		jars.ErrInsecureURL, servers.ErrBadSetting, servers.ErrUnknownSetting, servers.ErrNoProperties):
+		jars.ErrInsecureURL, install.ErrUnsafe, servers.ErrBadSetting, servers.ErrUnknownSetting, servers.ErrNoProperties):
 		return ExitConfig
 	case is(servers.ErrNotFound, servers.ErrInvalidName, jars.ErrNotFound, jars.ErrNoJAR, worlds.ErrNoWorld, servers.ErrNoProperty):
 		return ExitNotFound
 	case is(errNeedsConfirmation, servers.ErrExists, servers.ErrCaseCollision, jars.ErrExists, servers.ErrRunning, servers.ErrNotStopped, servers.ErrChanged,
 		filelock.ErrBusy, identity.ErrPrivilegeRequired, jars.ErrInUse, backup.ErrExternalLinks,
-		backup.ErrNotProven, maintenance.ErrNotProven, lifecycle.ErrNotProven, console.ErrNotProven, worlds.ErrConflict):
+		backup.ErrNotProven, maintenance.ErrNotProven, lifecycle.ErrNotProven, console.ErrNotProven, worlds.ErrConflict,
+		install.ErrExists, updater.ErrPackageManaged, updater.ErrNotReplaceable, updater.ErrPermission, updater.ErrBusy,
+		updater.ErrNoRollback, updater.ErrDowngrade):
 		return ExitRefused
 	case is(errUnavailable, profiles.ErrUnsupported, worlds.ErrRAMUnsupported, backup.ErrToolMissing,
 		backup.ErrToolVersion, lifecycle.ErrNoScreen, lifecycle.ErrNoJava, console.ErrNoScreen,
-		screen.ErrUnsupportedVersion):
+		screen.ErrUnsupportedVersion, updater.ErrNoTrustedKey, updater.ErrUnknownVersion, updater.ErrNoArtifact):
 		return ExitUnavailable
 	}
 	return ExitError

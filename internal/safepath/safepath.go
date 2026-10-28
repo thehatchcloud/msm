@@ -22,7 +22,7 @@ var nameRE = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 var reservedNames = map[string]bool{
 	"start": true, "stop": true, "restart": true, "version": true,
 	"server": true, "jargroup": true, "all": true, "config": true,
-	"update": true, "help": true, "maintenance": true,
+	"update": true, "help": true, "maintenance": true, "install": true,
 }
 
 // ValidateName reports whether name is safe to use as a server, world, or

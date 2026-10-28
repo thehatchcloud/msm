@@ -33,7 +33,7 @@ changed in meaning without incrementing it.
   5    refused       declined for safety: confirmation missing, server not
                      proven stopped, name taken, or a lock is held
   6    unavailable   a program or feature needed (such as GNU screen) is
-                     missing, or the command is not in this build (update)
+                     missing, or this build cannot do it (update in a development build)
   130  interrupted   stopped by Ctrl+C or a termination request
 
 A refusal (5) and a usage or configuration error (2, 3) change nothing.
