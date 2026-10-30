@@ -136,7 +136,7 @@ func (f *fixture) env(states fakeProber) Env {
 func (f *fixture) options(c Commands) Options {
 	return Options{
 		Env: f.env(fakeProber{"alpha": servers.Stopped, "beta": servers.Stopped}), Commands: c,
-		Binary: f.bin, ExternalBackup: true, Out: io.Discard,
+		Binary: f.bin, ExternalBackup: true, Out: io.Discard, EUID: os.Geteuid(),
 	}
 }
 
