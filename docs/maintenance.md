@@ -171,7 +171,9 @@ else (`find`, `xargs`, `rm`, `gzip`, `flock`) is used.
 
 Pick one scheduler. Edit the user, the path of the `msm` binary
 (`/usr/local/bin/msm` below) and `MSM_CONF` first. Disable any old
-`/etc/cron.d/msm` from the Bash installation, or jobs run twice.
+`/etc/cron.d/msm` from the Bash installation, or jobs run twice
+(`msm migrate apply` does this, and writes the cron file below from the legacy
+one; see [migration.md](migration.md)).
 
 ### systemd (Linux)
 

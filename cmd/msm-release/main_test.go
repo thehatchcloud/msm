@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/thehatchcloud/msm/internal/evidence"
 	"github.com/thehatchcloud/msm/internal/update"
 )
 
@@ -158,3 +161,45 @@ func TestVerifyRejectsTamperingAndOtherKeys(t *testing.T) {
 }
 
 func base64Of(k ed25519.PublicKey) string { return base64.StdEncoding.EncodeToString(k) }
+
+func TestEvidenceCheckBlocksOnGaps(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	err := run([]string{"evidence", "-dir", dir, "-commit", commit}, &out)
+	if err == nil || !strings.Contains(out.String(), "BLOCKED linux/arm64") || !strings.Contains(out.String(), "BLOCKED darwin/amd64") {
+		t.Fatalf("empty evidence = %v\n%s", err, out.String())
+	}
+	if err := run([]string{"evidence", "-dir", dir}, &out); err == nil {
+		t.Error("evidence without -commit succeeded")
+	}
+	if err := run([]string{"evidence", "-dir", dir, "-commit", commit, "-release", dir}, &out); err == nil || !strings.Contains(err.Error(), "-pubkey") {
+		t.Errorf("-release without -pubkey = %v", err)
+	}
+	// Complete evidence passes.
+	for _, tg := range evidence.Targets {
+		for _, major := range evidence.JavaMajors {
+			for _, root := range []bool{false, true} {
+				if root && tg.OS != "linux" {
+					continue
+				}
+				f := evidence.File{Schema: 1, OS: tg.OS, Arch: tg.Arch, JavaMajor: major, Commit: commit, Root: root}
+				names := evidence.Scenarios
+				if root {
+					names = []string{evidence.RootScenario}
+				}
+				for _, n := range names {
+					f.Results = append(f.Results, evidence.Result{Name: n, Passed: true})
+				}
+				data, _ := json.Marshal(f)
+				name := fmt.Sprintf("e2e-%s-%s-java%d-%v.json", tg.OS, tg.Arch, major, root)
+				if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+	out.Reset()
+	if err := run([]string{"evidence", "-dir", dir, "-commit", commit}, &out); err != nil || !strings.Contains(out.String(), "ok: runtime evidence for 4 platforms") {
+		t.Fatalf("complete evidence = %v\n%s", err, out.String())
+	}
+}

@@ -46,6 +46,22 @@ channel against a staging URL before the production one. Installing a release
 needs the files at `RELEASE_URL` exactly; `msm update` fetches
 `manifest.json`, `manifest.json.sig` and the platform's archive from there.
 
+## Runtime evidence (P16)
+
+A release also needs proof that its executables ran, not only that they built:
+native end-to-end evidence for the four platforms and both declared Java
+versions ([validation.md](validation.md)). Before signing and publishing:
+
+```sh
+go run ./cmd/msm-release evidence -dir ./evidence -commit <release commit> \
+    -release dist/release -pubkey "$PUBLIC_KEY"
+```
+
+An unavailable runner is a release blocker, or the platform is dropped from the
+release on purpose and said so. The migration and rollback have been rehearsed
+in CI on copies only ([migration.md](migration.md)); no release is a
+deployment.
+
 Version rules the updater enforces: `X.Y.Z` only (no pre-release), never an
 older version than installed (a re-signed old release cannot downgrade anyone),
 and the manifest must name this project.

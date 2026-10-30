@@ -81,6 +81,14 @@ release: check-go ## Build signed release files in dist/release (VERSION, RELEAS
 test: check-go ## Run the unit tests (pure-Go build)
 	CGO_ENABLED=0 $(GO) test -count=1 ./...
 
+.PHONY: native
+native: check-go ## Run the native end-to-end suite (needs screen, a JDK, MSM_E2E_RAMDIR; see docs/validation.md)
+	MSM_E2E=1 $(GO) test -count=1 -v ./internal/e2e
+
+.PHONY: rehearse
+rehearse: build ## Rehearse a migration and its rollback on a copy of a legacy installation
+	compatibility/migration/rehearse.sh $(BIN_DIR)/msm
+
 .PHONY: test-race
 test-race: check-go ## Run the unit tests with the race detector (needs a C toolchain)
 	CGO_ENABLED=1 $(GO) test -race -count=1 -timeout=3m ./...

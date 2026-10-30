@@ -186,3 +186,7 @@ func ExecRunner(name string, args ...string) error {
 	}
 	return nil
 }
+
+// CheckPath reports whether p is an absolute path that is safe to write into
+// a generated file (see ErrUnsafe); what names it in the error.
+func CheckPath(what, p string) error { return checkPath(what, p) }

@@ -194,4 +194,4 @@ it does not claim that the command behavior itself has been ported.
 - P13 owns log rolling and scheduled maintenance.
 - P14 owns complete CLI grammar, help, completions, output, and exit codes.
 - P15 owns installation, services, releases, and updates.
-- P16 owns migration, rollback, and native platform validation.
+- P16 owns migration, rollback, and native platform validation ([migration.md](../migration.md), [validation.md](../validation.md)).

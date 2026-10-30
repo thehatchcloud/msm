@@ -8,14 +8,18 @@ package main
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/thehatchcloud/msm/internal/evidence"
 	"github.com/thehatchcloud/msm/internal/update"
 )
 
@@ -32,6 +36,9 @@ const usage = `usage:
   msm-release package -key KEYFILE -version X.Y.Z -commit HASH -license FILE -out DIR
                       -bin os/arch=PATH ...   build the archives, manifest and signature
   msm-release verify  -pubkey BASE64 -dir DIR check a release directory as msm update would
+  msm-release evidence -dir DIR -commit HASH [-release RELDIR -pubkey BASE64]
+                      check that every platform has passing runtime evidence (docs/validation.md);
+                      with -release, that it was made with the release's own executables
 `
 
 func run(args []string, out io.Writer) error {
@@ -47,6 +54,8 @@ func run(args []string, out io.Writer) error {
 		return pack(args[1:], out)
 	case "verify":
 		return verify(args[1:], out)
+	case "evidence":
+		return checkEvidence(args[1:], out)
 	}
 	return errors.New(usage)
 }
@@ -169,5 +178,58 @@ func verify(args []string, out io.Writer) error {
 		return err
 	}
 	_, err = fmt.Fprintf(out, "ok: version %s commit %s, %d artifacts verified\n", m.Version, m.Commit, len(m.Artifacts))
+	return err
+}
+
+// checkEvidence fails, listing every gap, unless each release platform has
+// runtime evidence from the declared Java versions at this commit. A target
+// with no runner has no evidence, and that is reported as a blocker rather
+// than skipped. Nothing is signed or published here.
+func checkEvidence(args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("evidence", flag.ContinueOnError)
+	dir := fs.String("dir", "", "directory holding the e2e-*.json evidence files (searched recursively)")
+	commit := fs.String("commit", "", "full source commit hash of the release")
+	releaseDir := fs.String("release", "", "a release directory; the evidence must come from its executables")
+	pub := fs.String("pubkey", "", "base64 public key, with -release")
+	if err := fs.Parse(args); err != nil || *dir == "" || *commit == "" {
+		return errors.New("evidence needs -dir and -commit")
+	}
+	var binaries map[string]string
+	if *releaseDir != "" {
+		if *pub == "" {
+			return errors.New("-release needs -pubkey")
+		}
+		keys, err := update.ParseKeys([]string{*pub})
+		if err != nil {
+			return err
+		}
+		m, err := update.VerifyDir(keys, *releaseDir)
+		if err != nil {
+			return err
+		}
+		if m.Commit != *commit {
+			return fmt.Errorf("the release is commit %s, not %s", m.Commit, *commit)
+		}
+		binaries = map[string]string{}
+		for _, a := range m.Artifacts {
+			files, err := update.ReadArchive(filepath.Join(*releaseDir, a.File), update.Release{Version: m.Version, Commit: m.Commit, OS: a.OS, Arch: a.Arch})
+			if err != nil {
+				return err
+			}
+			sum := sha256.Sum256(files.Binary)
+			binaries[a.OS+"/"+a.Arch] = hex.EncodeToString(sum[:])
+		}
+	}
+	files, err := evidence.Load(*dir)
+	if err != nil {
+		return err
+	}
+	if gaps := evidence.Check(files, *commit, binaries); len(gaps) > 0 {
+		for _, g := range gaps {
+			fmt.Fprintln(out, g)
+		}
+		return fmt.Errorf("%d evidence gaps: the release is blocked", len(gaps))
+	}
+	_, err = fmt.Fprintf(out, "ok: runtime evidence for %d platforms, Java %v, commit %s\n", len(evidence.Targets), evidence.JavaMajors, *commit)
 	return err
 }

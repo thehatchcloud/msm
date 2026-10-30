@@ -1,0 +1,195 @@
+name: Native validation
+
+# Runs the built msm executable against a real GNU screen and a real JVM on
+# native runners (internal/e2e), and rehearses a migration and its rollback
+# (compatibility/migration/rehearse.sh). Cross-compiling (go.yml) proves a
+# target builds; this proves it runs. docs/validation.md says what is and is
+# not covered, and msm-release evidence turns the artifacts into a release
+# check.
+#
+# Pull requests and pushes run the two targets every GitHub-hosted account has
+# (linux/amd64, macOS/arm64). The other two (linux/arm64, macOS/amd64) run from
+# "Run workflow" with extended checked, which a release needs; a target that
+# has no runner stays an explicit release blocker rather than a green skip.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      extended:
+        description: "Also run linux/arm64 and macOS/amd64 (needed for a release)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - id: matrix
+        env:
+          EXTENDED: ${{ inputs.extended }}
+        run: |
+          base='[{"runner":"ubuntu-24.04","os":"linux","arch":"amd64","jvm":"X64"},{"runner":"macos-15","os":"darwin","arch":"arm64","jvm":"arm64"}]'
+          extra='[{"runner":"ubuntu-24.04-arm","os":"linux","arch":"arm64","jvm":"arm64"},{"runner":"macos-15-intel","os":"darwin","arch":"amd64","jvm":"X64"}]'
+          targets="$base"
+          if [ "$EXTENDED" = "true" ]; then
+            targets="$(jq -cn --argjson a "$base" --argjson b "$extra" '$a + $b')"
+          fi
+          # One entry per target and declared Java version.
+          matrix="$(jq -cn --argjson t "$targets" '{include: [$t[] as $x | ("17", "21") as $j | $x + {java: $j}]}')"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  e2e:
+    name: Native e2e (${{ matrix.os }}/${{ matrix.arch }}, Java ${{ matrix.java }})
+    needs: plan
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install GNU screen (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends screen
+      - name: Install GNU screen (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          brew install screen
+          # Ahead of the screen 4.00.03 macOS bundles, which msm refuses.
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+      - name: Select Java ${{ matrix.java }}
+        env:
+          JAVA_VERSION: ${{ matrix.java }}
+          JVM_ARCH: ${{ matrix.jvm }}
+        run: |
+          # The runner images ship Temurin and name each in JAVA_HOME_<major>_<arch>.
+          var="JAVA_HOME_${JAVA_VERSION}_${JVM_ARCH}"
+          home="${!var:-}"
+          if [ -z "$home" ] || [ ! -x "$home/bin/java" ]; then
+            echo "::error::this runner image has no Java ${JAVA_VERSION} ($var is unset): it cannot validate this target"
+            exit 1
+          fi
+          echo "JAVA_HOME=$home" >> "$GITHUB_ENV"
+          echo "$home/bin" >> "$GITHUB_PATH"
+      - name: Record the toolchain
+        run: |
+          uname -srm
+          screen -v || true
+          java -version
+          javac -version
+          test "$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')" = "${{ matrix.arch }}"
+      - name: Prepare a RAM volume (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          test "$(stat -f -c %T /dev/shm)" = tmpfs
+          sudo install -d -o "$(id -u)" -g "$(id -g)" /dev/shm/msm-e2e
+          echo "MSM_E2E_RAMDIR=/dev/shm/msm-e2e" >> "$GITHUB_ENV"
+      - name: Prepare a RAM volume (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          dev="$(hdiutil attach -nomount ram://131072 | tr -d '[:space:]')"
+          diskutil erasevolume HFS+ MSMRAM "$dev"
+          mkdir -p /Volumes/MSMRAM/e2e
+          echo "MSM_E2E_RAMDIR=/Volumes/MSMRAM/e2e" >> "$GITHUB_ENV"
+      - name: Build the executable, the stand-in server and the test program
+        run: |
+          # The release flags: pure Go, trimmed, stripped, commit stamped.
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/thehatchcloud/msm/internal/buildinfo.commit=$GITHUB_SHA" -o "$RUNNER_TEMP/msm" ./cmd/msm
+          javac --release 17 -d "$RUNNER_TEMP/fake" internal/e2e/testdata/FakeServer.java
+          jar cfe "$RUNNER_TEMP/server.jar" FakeServer -C "$RUNNER_TEMP/fake" FakeServer.class
+          go test -c -o "$RUNNER_TEMP/e2e.test" ./internal/e2e
+      - name: Run the end-to-end suite
+        working-directory: internal/e2e
+        env:
+          MSM_E2E: "1"
+          MSM_E2E_COMMIT: ${{ github.sha }}
+          MSM_E2E_EVIDENCE: ${{ runner.temp }}/evidence
+        run: |
+          export MSM_E2E_BIN="$RUNNER_TEMP/msm" MSM_E2E_JAR="$RUNNER_TEMP/server.jar"
+          "$RUNNER_TEMP/e2e.test" -test.v -test.timeout=20m
+      # As root the manager acts as each server's owner. Only Linux validates
+      # this: macOS has no account to drop to that the runner can rely on.
+      - name: Run the root privilege checks (Linux)
+        if: runner.os == 'Linux'
+        working-directory: internal/e2e
+        env:
+          MSM_E2E: "1"
+          MSM_E2E_COMMIT: ${{ github.sha }}
+          MSM_E2E_EVIDENCE: ${{ runner.temp }}/evidence
+        run: |
+          sudo --preserve-env env "PATH=$PATH" "MSM_E2E_BIN=$RUNNER_TEMP/msm" "MSM_E2E_JAR=$RUNNER_TEMP/server.jar" \
+            MSM_E2E_USER=nobody "$RUNNER_TEMP/e2e.test" -test.v -test.run '^TestUserPermissions$' -test.timeout=10m
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-evidence-${{ matrix.os }}-${{ matrix.arch }}-java${{ matrix.java }}
+          path: ${{ runner.temp }}/evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  rehearse:
+    name: Migration rehearsal (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Migrate a copy of a legacy installation, then roll it back
+        run: |
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/msm" ./cmd/msm
+          compatibility/migration/rehearse.sh "$RUNNER_TEMP/msm"
+
+  gate:
+    name: Native validation checks
+    runs-on: ubuntu-24.04
+    needs: [plan, e2e, rehearse]
+    if: always()
+    timeout-minutes: 2
+    steps:
+      - name: Require every job to succeed
+        env:
+          PLAN: ${{ needs.plan.result }}
+          E2E: ${{ needs.e2e.result }}
+          REHEARSE: ${{ needs.rehearse.result }}
+        run: |
+          test "$PLAN" = success
+          test "$E2E" = success
+          test "$REHEARSE" = success

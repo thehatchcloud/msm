@@ -26,7 +26,7 @@ global `msm stop` stops the servers and leaves them marked active, so
 `msm start` (for example from cron) brings them back.
 
 The words `start`, `stop`, `restart`, `version`, `server`, `jargroup`,
-`config`, `update`, `install`, `help`, `maintenance` and `all` can never be server names (DEV-036).
+`config`, `update`, `install`, `migrate`, `help`, `maintenance` and `all` can never be server names (DEV-036, DEV-038).
 
 ## Global flags
 
@@ -128,6 +128,17 @@ writes a minimal `msm.conf` and creates the data directories, and `msm install
 service` prints (or with `--write` installs, and with `--write --enable`
 enables for the next boot, never starting it) a systemd unit or launchd
 daemon. See [install.md](install.md).
+
+## Migration
+
+`msm migrate preflight` inventories a legacy Bash installation and reports what
+cannot move; it changes nothing. `msm migrate apply` backs the installation up,
+disables the legacy cron file, service and executable, and only then installs
+and enables the Go executable, schedule and service; `msm migrate rollback`
+restores the legacy ones. All need a stopped maintenance window, and apply and
+rollback need root (or `--root DIR` to rehearse on a copy). Exit status 5 means
+a blocker, a running server, an earlier migration or a missing confirmation;
+2, no backup choice. See [migration.md](migration.md).
 
 ## Settings
 
