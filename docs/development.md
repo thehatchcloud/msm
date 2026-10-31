@@ -12,7 +12,9 @@ rolling and scheduled maintenance (see [maintenance](maintenance.md)) and the
 P14 `config`, `help`, `version`, Cobra-generated `completion` and `--format
 json` (see [CLI, completion and parity](#cli-completion-and-parity-p14)).
 `update` is the verified updater and `install` the installation helpers of P15
-(see [Installation and updates](#installation-and-updates-p15)).
+(see [Installation and updates](#installation-and-updates-p15)), and `migrate`
+moves a legacy Bash installation to the executable and back (P16, see
+[Migration and native validation](#migration-and-native-validation-p16)).
 Viper reads the small native configuration schema described below. No Go
 command runs the legacy manager; the manager's runtime logic is Go, and the
 external programs it can use (GNU screen, Java, and optionally rdiff-backup)
@@ -1276,6 +1278,7 @@ checkout does not retain credentials.
 | Go build (OS/architecture) | Four CGO-disabled binaries with source metadata |
 | Go checks | Stable aggregate gate; fails if any prerequisite fails, is canceled or is skipped |
 | Legacy tests | Separate inherited Bash/shunit suite, unchanged manager behavior |
+| Native validation (`validate.yml`) | The end-to-end suite on real screen and JVMs for linux/amd64 and macOS/arm64 with Java 17 and 21 (the other two platforms on request), the root checks on Linux, a migration and rollback rehearsal on both OSes, and the evidence files as artifacts |
 
 Each build uploads a development artifact containing `msm`, the GPL license, and
 `SHA256SUMS`. Artifacts expire after 14 days and are named with the full commit.
@@ -1311,6 +1314,34 @@ unreviewed Go release.
   archive, and cover symlinked and package-managed executables, a read-only
   directory, a concurrent update, a downgrade and a development build.
   The permission test is skipped when run as root.
+
+## Migration and native validation (P16)
+
+* `internal/migrate` is the migration. `inventory.go` is the read-only
+  preflight (`Collect`: configuration, users, servers, active flags, screen
+  state through the same prober the commands use, worlds, JAR groups, archives,
+  schedule, customizations; `FingerprintWorlds` hashes world directories without
+  reading them). `cron.go` parses the legacy cron file as data and renders the
+  Go one. `backup.go` copies the legacy control files with a checksummed
+  manifest. `migrate.go` is `Apply` and `Rollback`: an ordered list of steps
+  each with an undo, a journal written before and after every step, a lock, and
+  a window check made both before and under the lock. `internal/cli/migrate.go`
+  is the command; `--root` re-roots every path and replaces `systemctl` with a
+  printout, which is how it is rehearsed.
+* The tests build the legacy installation from this repository's own `msm.conf`,
+  `cron/msm` and `init/msm`, and check: the preflight changes nothing (tree and
+  modification times); apply then rollback returns every control file byte for
+  byte and writes nothing in the server tree; when the Go service is enabled the
+  legacy cron file, executable and service are already out of action; a failure
+  injected at each `systemctl` call, a crash part-way and a world written during
+  the run all end restored; a running or unprovable server, a second apply, a
+  missing backup choice and a held lock are refused. `compatibility/migration/rehearse.sh`
+  does the sequence with the real binary.
+* `internal/e2e` is the native suite ([validation.md](validation.md)); it is
+  skipped unless `MSM_E2E=1`, and then requires screen, a JDK and a RAM volume.
+  `internal/evidence` and `msm-release evidence` turn its output into a release
+  check. Run the suite as root and as an ordinary user to see both permission
+  scenarios.
 
 ## Review and branch policy
 

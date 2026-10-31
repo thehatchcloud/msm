@@ -43,6 +43,7 @@ type serverFixture struct {
 	info       buildinfo.Info
 	updateEnv  updateEnv
 	installEnv installEnv
+	migrateEnv migrateEnv
 }
 
 // newServerFixture points MSM_CONF at a temporary msm.conf whose storage
@@ -149,7 +150,7 @@ func (f *serverFixture) run(t *testing.T, stdin string, args ...string) (int, st
 	if f.stdin != nil {
 		in = f.stdin
 	}
-	d.update, d.install = f.updateEnv, f.installEnv
+	d.update, d.install, d.migrate = f.updateEnv, f.installEnv, f.migrateEnv
 	info := f.info
 	if info.Version == "" {
 		info.Version = "test"

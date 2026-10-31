@@ -16,6 +16,7 @@ import (
 	"github.com/thehatchcloud/msm/internal/legacyconf"
 	"github.com/thehatchcloud/msm/internal/lifecycle"
 	"github.com/thehatchcloud/msm/internal/maintenance"
+	"github.com/thehatchcloud/msm/internal/migrate"
 	"github.com/thehatchcloud/msm/internal/profiles"
 	"github.com/thehatchcloud/msm/internal/screen"
 	"github.com/thehatchcloud/msm/internal/serverprops"
@@ -107,7 +108,7 @@ func exitCode(err error) int {
 	case is(context.Canceled, lifecycle.ErrInterrupted):
 		return ExitInterrupted
 	case errors.As(err, &uerr), is(errNoSuchCommand, profiles.ErrBadArgument, screen.ErrUnsafeInput,
-		console.ErrAmbiguous, serverprops.ErrUnsafeProperty, jars.ErrInvalidName, maintenance.ErrOptions):
+		console.ErrAmbiguous, serverprops.ErrUnsafeProperty, jars.ErrInvalidName, maintenance.ErrOptions, migrate.ErrNoBackup):
 		return ExitUsage
 	case errors.As(err, &syntax), is(legacyconf.ErrUnsafeInvocation, legacyconf.ErrNoOwner, lifecycle.ErrSettings,
 		backup.ErrSettings, backup.ErrDisabled, worlds.ErrRAMConfig, jars.ErrInvalidTarget, jars.ErrNoTarget,
@@ -119,11 +120,12 @@ func exitCode(err error) int {
 		filelock.ErrBusy, identity.ErrPrivilegeRequired, jars.ErrInUse, backup.ErrExternalLinks,
 		backup.ErrNotProven, maintenance.ErrNotProven, lifecycle.ErrNotProven, console.ErrNotProven, worlds.ErrConflict,
 		install.ErrExists, updater.ErrPackageManaged, updater.ErrNotReplaceable, updater.ErrPermission, updater.ErrBusy,
-		updater.ErrNoRollback, updater.ErrDowngrade):
+		updater.ErrNoRollback, updater.ErrDowngrade, migrate.ErrBlocked, migrate.ErrMigrated, migrate.ErrInterrupted,
+		migrate.ErrNoMigration, migrate.ErrNotStopped, migrate.ErrPrivilege):
 		return ExitRefused
 	case is(errUnavailable, profiles.ErrUnsupported, worlds.ErrRAMUnsupported, backup.ErrToolMissing,
 		backup.ErrToolVersion, lifecycle.ErrNoScreen, lifecycle.ErrNoJava, console.ErrNoScreen,
-		screen.ErrUnsupportedVersion, updater.ErrNoTrustedKey, updater.ErrUnknownVersion, updater.ErrNoArtifact):
+		screen.ErrUnsupportedVersion, updater.ErrNoTrustedKey, updater.ErrUnknownVersion, updater.ErrNoArtifact, migrate.ErrUnsupported):
 		return ExitUnavailable
 	}
 	return ExitError

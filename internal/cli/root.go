@@ -78,7 +78,7 @@ func newRootCommand(info buildinfo.Info, d deps) (*cobra.Command, error) {
 	root.AddCommand(newVersionCommand(info), newServerCommand(d),
 		newGlobalCommand(d, lifecycle.VerbStart), newGlobalCommand(d, lifecycle.VerbStop),
 		newGlobalCommand(d, lifecycle.VerbRestart), newJargroupCommand(d), newMaintenanceCommand(d),
-		newConfigCommand(d), newUpdateCommand(info, d), newInstallCommand(d))
+		newConfigCommand(d), newUpdateCommand(info, d), newInstallCommand(d), newMigrateCommand(d))
 	root.ValidArgsFunction = completeServerFirst(d)
 	attachCompletions(root, d)
 	markUsage(root)

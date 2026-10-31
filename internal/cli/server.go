@@ -59,6 +59,8 @@ type deps struct {
 	update updateEnv
 	// install is the host the installation commands run against.
 	install installEnv
+	// migrate is the host the migration commands run against.
+	migrate migrateEnv
 	// program is how the legacy messages name the executable ($0).
 	program string
 }
@@ -75,6 +77,7 @@ func defaultDeps() deps {
 	d.globalConfig = hostGlobalConfig
 	d.update = defaultUpdateEnv()
 	d.install = defaultInstallEnv()
+	d.migrate = defaultMigrateEnv()
 	return d
 }
 

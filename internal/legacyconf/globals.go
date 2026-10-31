@@ -1,5 +1,7 @@
 package legacyconf
 
+import "strings"
+
 // globalSettings are the global settings init/msm registers with
 // register_setting, in registration order, with the defaults the legacy
 // manager documents. compatibility/settings.tsv is the reviewed inventory;
@@ -85,4 +87,21 @@ func GlobalEntries(f *File, resolved map[string]string) []ConfigEntry {
 		add("DEFAULT_"+s.Name, s.Default)
 	}
 	return entries
+}
+
+// IsGlobalSetting reports whether name is a setting msm.conf may carry: one
+// of the global settings, or DEFAULT_ followed by a per-server setting. The
+// match ignores case, as the lookup of a value does.
+func IsGlobalSetting(name string) bool {
+	for _, s := range globalSettings {
+		if strings.EqualFold(s.Name, name) {
+			return true
+		}
+	}
+	for _, s := range serverSettings {
+		if strings.EqualFold("DEFAULT_"+s.Name, name) {
+			return true
+		}
+	}
+	return false
 }
