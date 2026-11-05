@@ -89,36 +89,27 @@ func count(t *testing.T, key string, got int) {
 	}
 }
 
+// The Bash manager that these inventories were taken from was removed in P17
+// (DEV-039; git tag legacy-bash-final). The inventories are now the frozen
+// record, and baseline.env says how large they must be.
 func TestCommandInventory(t *testing.T) {
-	source := read(t, "../init/msm")
-	matches := regexp.MustCompile(`(?m)^\s*register_command "([^"]+)" "([^"]+)"$`).FindAllStringSubmatch(source, -1)
 	rows := table(t, "commands.tsv", "id\tsignature\thandler\towner\tcontract_test")
-	count(t, "COMMAND_COUNT", len(matches))
-	if len(rows) != len(matches) {
-		t.Fatal("command fixture count differs from source")
-	}
+	count(t, "COMMAND_COUNT", len(rows))
 	ids := map[string]bool{}
-	for i, row := range rows {
+	for _, row := range rows {
 		if ids[row[0]] {
 			t.Fatalf("duplicate command ID %s", row[0])
 		}
 		ids[row[0]] = true
-		if row[1] != matches[i][1] || row[2] != matches[i][2] {
-			t.Fatalf("%s: fixture=%q source=%q", row[0], row[1:3], matches[i][1:3])
-		}
 	}
-	version := regexp.MustCompile(`(?m)^VERSION="([^"]+)"$`).FindStringSubmatch(source)
-	if len(version) != 2 || version[1] != baseline(t)["UPSTREAM_MSM_VERSION"] {
+	if baseline(t)["UPSTREAM_MSM_VERSION"] != "0.11.0" {
 		t.Fatal("legacy version changed")
 	}
 }
 
 func TestSettingsInventory(t *testing.T) {
-	source := read(t, "../init/msm")
-	re := regexp.MustCompile(`(?m)^[\t ]*register_(server_)?setting ([A-Z_]+)(?: "([^"]*)")?[\t ]*$`)
-	matches := re.FindAllStringSubmatch(source, -1)
 	rows := table(t, "settings.tsv", "scope\tname\tdefault\towner\tcontract_test")
-	var expected, actual []string
+	var expected []string
 	knownKeys := map[string]bool{}
 	totals := map[string]int{}
 	for _, row := range rows {
@@ -139,20 +130,14 @@ func TestSettingsInventory(t *testing.T) {
 		}
 		knownKeys[name] = true
 	}
-	for _, m := range matches {
-		scope := "global"
-		if m[1] != "" {
-			scope = "server"
+	for _, row := range rows {
+		if row[0] == "global" || row[0] == "server" {
+			totals[row[0]]++
 		}
-		totals[scope]++
-		actual = append(actual, strings.Join([]string{scope, m[2], m[3]}, "\t"))
-	}
-	if !slices.Equal(actual, expected) {
-		t.Fatalf("settings inventory differs:\nsource=%q\nfixture=%q", actual, expected)
 	}
 	count(t, "GLOBAL_SETTING_COUNT", totals["global"])
 	count(t, "SERVER_SETTING_COUNT", totals["server"])
-	keys := regexp.MustCompile(`(?m)^([A-Z][A-Z0-9_]*)=`).FindAllStringSubmatch(read(t, "../msm.conf"), -1)
+	keys := regexp.MustCompile(`(?m)^([A-Z][A-Z0-9_]*)=`).FindAllStringSubmatch(read(t, "legacy/msm.conf"), -1)
 	count(t, "CONFIG_FILE_KEY_COUNT", len(keys))
 	for _, key := range keys {
 		if !knownKeys[key[1]] {
@@ -161,21 +146,30 @@ func TestSettingsInventory(t *testing.T) {
 	}
 }
 
+// removedLegacy lists what a surface's source may name once the file is gone.
+var removedLegacy = regexp.MustCompile(`^legacy:(init/|cron/|bash_completion/|installers/|versioning/|test\.sh$|msm\.conf$)`)
+
 func TestSurfaceInventory(t *testing.T) {
 	rows := table(t, "surfaces.tsv", "id\ttype\tsource\tbehavior\towner\tcontract_test")
 	var profiles []string
 	for _, row := range rows {
-		if _, err := os.Stat(filepath.Join("..", row[2])); err != nil {
+		if removedLegacy.MatchString(row[2]) {
+			// Historical: the file is in git tag legacy-bash-final, not the tree.
+			if _, err := os.Stat(filepath.Join("..", strings.TrimPrefix(row[2], "legacy:"))); err == nil {
+				t.Fatalf("%s: %s was removed from the tree (DEV-039) but exists", row[0], row[2])
+			}
+		} else if _, err := os.Stat(filepath.Join("..", row[2])); err != nil {
 			t.Fatalf("%s: missing source: %v", row[0], err)
 		}
 		if row[3] == "" {
 			t.Fatalf("%s: missing behavior", row[0])
 		}
 		if row[1] == "version-profile" {
-			profiles = append(profiles, filepath.Clean(filepath.Join("..", row[2])))
+			name := strings.TrimSuffix(strings.TrimPrefix(row[2], "legacy:versioning/"), ".sh")
+			profiles = append(profiles, filepath.Join("legacy/profiles", name+".profile"))
 		}
 	}
-	actual, err := filepath.Glob("../versioning/*/*.sh")
+	actual, err := filepath.Glob("legacy/profiles/*/*.profile")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,8 +179,6 @@ func TestSurfaceInventory(t *testing.T) {
 		t.Fatal("version profiles differ from the surface inventory")
 	}
 	count(t, "VERSION_PROFILE_COUNT", len(profiles))
-	tests := regexp.MustCompile(`(?m)^test[A-Za-z0-9_]+\(\)`).FindAllString(read(t, "../test.sh"), -1)
-	count(t, "UPSTREAM_TEST_FUNCTION_COUNT", len(tests))
 }
 
 func TestTemporaryReferenceFixture(t *testing.T) {

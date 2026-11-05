@@ -70,9 +70,8 @@ shipping build: all distributable binaries are built with `CGO_ENABLED=0`.
 The Go tests need no Java, use temporary directories, and never execute the
 upstream manager. The screen backend's native tests also run GNU screen when it
 is installed (in private socket and home directories) and skip otherwise;
-`MSM_REQUIRE_SCREEN=1` turns a missing screen into a failure, as CI does. The separate legacy shunit suite must run on a
-disposable Linux CI machine: it creates a dedicated test user and uses
-`/tmp/msmtest`. Do not run it on a production Minecraft host.
+`MSM_REQUIRE_SCREEN=1` turns a missing screen into a failure, as CI does. The inherited Bash/shunit suite was retired with the Bash manager
+(DEV-039); `compatibility/audit_test.go` keeps it from coming back.
 
 ## Build and identify a binary
 
@@ -166,7 +165,7 @@ Do not introduce a second argument parser or configuration framework.
   error output; the outer `Run` function prints execution errors once.
 - `msm help`, `msm --help` and `msm -h` print the legacy `command_help`
   list verbatim (`internal/cli/help.go`; `TestLegacyHelpAndNoSuchCommand`
-  compares it with `init/msm`). It lists every legacy command, including
+  compares it with `internal/cli/testdata/legacy-help.txt`, the upstream text). It lists every legacy command, including
   those not yet ported. Cobra still generates help for subcommands
   (`msm help server`, `msm server delete --help`) and shell completion.
   Built-in completion covers the current command tree, not future dynamic
@@ -1277,7 +1276,6 @@ checkout does not retain credentials.
 | Go vulnerabilities | Pinned govulncheck scan of application and standard library |
 | Go build (OS/architecture) | Four CGO-disabled binaries with source metadata |
 | Go checks | Stable aggregate gate; fails if any prerequisite fails, is canceled or is skipped |
-| Legacy tests | Separate inherited Bash/shunit suite, unchanged manager behavior |
 | Native validation (`validate.yml`) | The end-to-end suite on real screen and JVMs for linux/amd64 and macOS/arm64 with Java 17 and 21 (the other two platforms on request), the root checks on Linux, a migration and rollback rehearsal on both OSes, and the evidence files as artifacts |
 
 Each build uploads a development artifact containing `msm`, the GPL license, and
@@ -1346,7 +1344,7 @@ unreviewed Go release.
 ## Review and branch policy
 
 The P02 repository policy is to require a pull request, an up-to-date branch,
-passing `Go checks` and `Legacy tests`, conversation resolution, and no force
+passing `Go checks` (the `Legacy tests` check was retired with the Bash suite, DEV-039), conversation resolution, and no force
 pushes or deletion of `master`. Administrators are subject to those checks.
 
 Only `thehatchcloud` is currently a repository collaborator, and changes made

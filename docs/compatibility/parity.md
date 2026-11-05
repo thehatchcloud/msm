@@ -11,8 +11,8 @@ deferred.
 
 | Status | Rows | Meaning |
 |---|---|---|
-| implemented | 153 | preserved; `implementation` lists the Go files and `verification` the tests (`path::TestName`) that prove it |
-| deviation | 25 | deliberately different or absent; `deviations` names the entries in [deviations.md](deviations.md) that a reviewer approved, and `verification` still tests what the port does instead |
+| implemented | 152 | preserved; `implementation` lists the Go files and `verification` the tests (`path::TestName`) that prove it |
+| deviation | 26 | deliberately different or absent; `deviations` names the entries in [deviations.md](deviations.md) that a reviewer approved, and `verification` still tests what the port does instead |
 | deferred | 0 | owned by a later task (P15 packaging and services, P16 migration); the row says what is missing |
 
 The command rows also name their section of the golden file

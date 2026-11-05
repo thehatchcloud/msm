@@ -18,7 +18,7 @@ import (
 // the Go data's own classification.
 func legacyProfile(t *testing.T, name string) Profile {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("../../versioning", name+".sh"))
+	data, err := os.ReadFile(filepath.Join("../../compatibility/legacy/profiles", name+".profile"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func escapeParens(p *Profile) {
 // CT-SURF-021 to CT-SURF-025: the Go data equals the shipped profiles,
 // inheritance and every console command included.
 func TestProfilesMatchVersioningFiles(t *testing.T) {
-	files, err := filepath.Glob("../../versioning/*/*.sh")
+	files, err := filepath.Glob("../../compatibility/legacy/profiles/*/*.profile")
 	if err != nil || len(files) != len(All) {
 		t.Fatalf("versioning files %v (%v); want %d", files, err, len(All))
 	}

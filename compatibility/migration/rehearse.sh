@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Rehearses a migration and its rollback on a copy of a legacy installation
-# built from the files this repository ships (msm.conf, cron/msm, init/msm),
+# built from the inert reference files in compatibility/legacy (msm.conf, the
+# cron file) and a stand-in for the removed init script (DEV-039),
 # using the msm executable named by the first argument. Everything happens
 # below a temporary directory (msm migrate --root): no service, cron file or
 # real world is touched, and nothing needs root. CI runs it on Linux and
@@ -17,9 +18,10 @@ me="$(id -un)"
 
 mkdir -p "$root/etc/cron.d" "$root/etc/init.d" "$root/usr/local/bin" \
   "$root/opt/msm/servers/alpha/worldstorage/world" "$root/opt/msm/jars/minecraft"
-sed "s/\"minecraft\"/\"$me\"/" "$repo/msm.conf" > "$root/etc/msm.conf"
-sed "s/ minecraft / $me /" "$repo/cron/msm" > "$root/etc/cron.d/msm"
-cp "$repo/init/msm" "$root/etc/init.d/msm"
+sed "s/\"minecraft\"/\"$me\"/" "$repo/compatibility/legacy/msm.conf" > "$root/etc/msm.conf"
+sed "s/ minecraft / $me /" "$repo/compatibility/legacy/cron-msm.txt" > "$root/etc/cron.d/msm"
+# Migration reads only the VERSION line and the file mode of the old script.
+printf '# stand-in for the removed legacy init script\nVERSION="0.11.0"\n' > "$root/etc/init.d/msm"
 chmod 755 "$root/etc/init.d/msm"
 ln -s /etc/init.d/msm "$root/usr/local/bin/msm"
 printf 'level data' > "$root/opt/msm/servers/alpha/worldstorage/world/level.dat"

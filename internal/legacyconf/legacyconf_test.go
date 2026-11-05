@@ -97,7 +97,7 @@ func TestLoadRejectsNonAssignmentLine(t *testing.T) {
 
 func TestLoadAcceptsRealConfigurationFixtures(t *testing.T) {
 	for _, path := range []string{
-		"../../msm.conf",
+		"../../compatibility/legacy/msm.conf",
 		"../../compatibility/fixtures/minimal/msm.conf",
 	} {
 		t.Run(path, func(t *testing.T) {

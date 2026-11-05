@@ -6,6 +6,12 @@ Visit https://github.com/msmhq/msm for more information.
 Change Log
 ----------
 
+### Go port (unreleased)
+
+* The Bash manager is replaced by a Go executable that implements every command of the inventory, or documents a reviewed deviation (see `docs/compatibility/parity.md` and `docs/release-notes.md`).
+* Removed from the source tree (history kept in git tag `legacy-bash-final`): `init/msm`, `msm.conf`, `cron/msm`, `bash_completion/msm`, `installers/*.sh`, `versioning/**/*.sh`, `test.sh` and the legacy test workflow (DEV-039).
+* Added the release documentation, the support matrix, the operations guide and the no-shell-manager and subprocess audit (`docs/audit.md`).
+
 ### [0.11.0](https://github.com/msmhq/msm/compare/0.10.1...0.11.0)
 
 * Very minor - clean up extraneous whitespace by @Next-Door-Tech in [#431][#431]

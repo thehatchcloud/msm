@@ -65,3 +65,44 @@ deployment.
 Version rules the updater enforces: `X.Y.Z` only (no pre-release), never an
 older version than installed (a re-signed old release cannot downgrade anyone),
 and the manifest must name this project.
+
+## Release checklist (P17)
+
+Publishing is a manual maintainer step from a reviewed, CI-passing commit;
+nothing in this repository uploads a release and CI holds no signing key. A
+release is **not** a deployment: installing it anywhere, or migrating a
+production host, needs its own approval ([release-notes.md](release-notes.md)).
+
+1. **Commit.** The release commit is on `master`, reached through a reviewed
+   pull request, and every check of that commit is green: `Go checks`
+   (formatting, tidy, vet, unit, race, vulnerabilities, four builds, smoke test)
+   and `Native validation` including the extended run (`workflow_dispatch`,
+   `extended` checked). `git status` is clean; record `git rev-parse HEAD`.
+2. **Parity.** `go test ./compatibility` passes: every row of the parity matrix
+   is implemented or a reviewed deviation, none deferred, and the no-shell
+   audit holds ([audit.md](audit.md)). An unresolved feature omission means no
+   claim of full parity.
+3. **Security and race.** `make test-race` and `make vuln` are clean on that
+   commit (CI ran both; rerun locally if in doubt).
+4. **Dependencies and licenses.** `docs/dependencies.md` matches `go.mod`
+   (`TestDependenciesAreReviewed`); `LICENSE.markdown` is the file packaged.
+5. **Failure drills**, on a copy or a disposable host, none on production:
+   `make rehearse` (migration, second apply refused, rollback byte for byte);
+   `make native` (crash recovery, intent after global stop, other-user
+   refusal, RAM sync); a kill during `msm update` against a staging URL and
+   `msm update --rollback`; a full disk during a backup (no partial archive);
+   restore a world and a whole server from archives
+   ([operations.md](operations.md#restoring)). Note the result of each in the
+   release record.
+6. **Build and sign** from that commit: `make release VERSION=X.Y.Z
+   RELEASE_KEY=... RELEASE_URL=...`. The binaries, archives and the source at
+   that exact commit (`git archive --format=tar.gz --prefix=msm-X.Y.Z/ HEAD`)
+   are published together; `RELEASE` and `msm version` carry the same commit.
+7. **Evidence.** `msm-release evidence ... -release dist/release` passes for
+   all four platforms (above). A platform without evidence is dropped from the
+   release and named in the notes.
+8. **Notes.** Publish [release-notes.md](release-notes.md) with the release:
+   required dependencies, optional helpers, OS limits, known deviations,
+   future work. Tag the commit `vX.Y.Z`.
+9. **Stop.** Do not deploy. Hand the release to the people who approve
+   deployments.

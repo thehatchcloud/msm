@@ -10,8 +10,11 @@ can claim parity with Minecraft Server Manager (MSM).
 - MSM version declared by that commit: `0.11.0`
 - Contract issue: [#1](https://github.com/thehatchcloud/msm/issues/1)
 
-The checked-in Bash implementation remains the executable reference during the
-port. It is not automatically correct: `deviations.md` records behavior that the
+The Bash implementation was the executable reference during the port. It was
+removed when parity was proven (P17, DEV-039); it remains in git tag
+`legacy-bash-final`, and paths such as `init/msm` below name files in that tag.
+Inert data the tests still compare against is in `compatibility/legacy/`.
+The reference was not automatically correct: `deviations.md` records behavior that the
 Go implementation must intentionally change.
 
 ## Machine-readable inventories
@@ -25,13 +28,13 @@ Go implementation must intentionally change.
 | `compatibility/fixtures/minimal/` | Inert example installation copied into a temporary directory by the verifier |
 
 Run `go test ./compatibility` after changing a legacy source surface. The tests
-read files as text; they never source or invoke `init/msm`, `msm.conf`, or
+read files as text; they never source or invoke the legacy sources or
 `baseline.env`. They fail when command or setting registrations drift without an
 accompanying contract update and validate fixture ownership/test identifiers.
 
 P02 replaces the original shell verifier with Go tests and uses a fresh
-`t.TempDir()` for each inert reference fixture. The inherited shunit suite stays
-separate and runs only on disposable Linux CI runners.
+`t.TempDir()` for each inert reference fixture. The inherited shunit suite was retired in P17
+(DEV-039).
 
 ## Compatibility rules
 
@@ -147,7 +150,7 @@ minecraft/1.2.0
 
 ### Reference tests
 
-The upstream `test.sh` contains 30 test functions. They cover a useful subset of
+The upstream `test.sh` (removed in P17, DEV-039; git tag `legacy-bash-final`) contained 30 test functions. They cover a useful subset of
 names, instance CRUD, stopped-server behavior, basic backup/JAR behavior, and
 JAR-group CRUD. They do not cover global lifecycle, running-server behavior,
 player commands, version-profile parsing, RAM failure, restore, concurrency,

@@ -122,7 +122,7 @@ func TestLaunchdExamplesCoverEveryJob(t *testing.T) {
 
 // Every job line of the upstream cron/msm is in the documented inventory.
 func TestDocumentedInventoryCoversUpstreamCron(t *testing.T) {
-	cron := read(t, "../../cron/msm")
+	cron := read(t, "../../compatibility/legacy/cron-msm.txt")
 	doc := read(t, "../../docs/maintenance.md")
 	n := 0
 	for _, line := range strings.Split(cron, "\n") {

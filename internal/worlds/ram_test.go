@@ -151,7 +151,7 @@ func TestRAMOffByDefault(t *testing.T) {
 
 // The configuration shipped with a new installation leaves RAM worlds off.
 func TestShippedConfigDefaultsRAMOff(t *testing.T) {
-	f, err := legacyconf.Load("../../msm.conf")
+	f, err := legacyconf.Load("../../compatibility/legacy/msm.conf")
 	if err != nil {
 		t.Fatal(err)
 	}

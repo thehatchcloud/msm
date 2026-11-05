@@ -81,6 +81,10 @@ release: check-go ## Build signed release files in dist/release (VERSION, RELEAS
 test: check-go ## Run the unit tests (pure-Go build)
 	CGO_ENABLED=0 $(GO) test -count=1 ./...
 
+.PHONY: audit
+audit: check-go ## Run the parity, no-shell-manager, subprocess and dependency audits (docs/audit.md)
+	CGO_ENABLED=0 $(GO) test -count=1 ./compatibility
+
 .PHONY: native
 native: check-go ## Run the native end-to-end suite (needs screen, a JDK, MSM_E2E_RAMDIR; see docs/validation.md)
 	MSM_E2E=1 $(GO) test -count=1 -v ./internal/e2e

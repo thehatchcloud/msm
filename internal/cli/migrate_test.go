@@ -31,9 +31,9 @@ func legacyTree(t *testing.T) string {
 			t.Fatal(err)
 		}
 	}
-	put("etc/msm.conf", "msm.conf", 0o644)
-	put("etc/cron.d/msm", "cron/msm", 0o644)
-	put("etc/init.d/msm", "init/msm", 0o755)
+	put("etc/msm.conf", "compatibility/legacy/msm.conf", 0o644)
+	put("etc/cron.d/msm", "compatibility/legacy/cron-msm.txt", 0o644)
+	put("etc/init.d/msm", "compatibility/legacy/init-msm-standin.txt", 0o755)
 	if err := os.MkdirAll(filepath.Join(root, "usr/local/bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
