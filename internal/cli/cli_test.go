@@ -154,32 +154,22 @@ func TestRunEWriteFailure(t *testing.T) {
 	}
 }
 
-// msm help prints init/msm's command_help verbatim, and anything that
+// msm help prints the legacy command_help text verbatim, and anything that
 // matches no command gets the legacy "No such command" line (on stderr,
 // with a nonzero status).
 func TestLegacyHelpAndNoSuchCommand(t *testing.T) {
 	isolateConfig(t)
-	src, err := os.ReadFile("../../init/msm")
+	// testdata/legacy-help.txt is the command_help text of the pinned
+	// upstream init script (the Bash manager was removed from this tree in
+	// P17; git tag legacy-bash-final keeps it), with $0 for the program.
+	src, err := os.ReadFile("testdata/legacy-help.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := string(src[strings.Index(string(src), "command_help() {"):])
-	body = body[:strings.Index(body, "\n}\n")]
-	var want strings.Builder
-	for _, line := range strings.Split(body, "\n") {
-		line = strings.TrimSpace(line)
-		switch {
-		case line == "echo -e":
-			want.WriteString("\n")
-		case strings.HasPrefix(line, `echo -e "`):
-			text := strings.TrimSuffix(strings.TrimPrefix(line, `echo -e "`), `"`)
-			text = strings.ReplaceAll(strings.ReplaceAll(text, `\"`, `"`), "$0", programPath(os.Args[0]))
-			want.WriteString(text + "\n")
-		}
-	}
+	want := strings.ReplaceAll(string(src), "$0", programPath(os.Args[0]))
 	for _, args := range [][]string{{"help"}, {"--help"}, {"-h"}} {
 		var out, errOut bytes.Buffer
-		if code := Run(args, nil, &out, &errOut, buildinfo.Current()); code != ExitOK || out.String() != want.String() || errOut.Len() != 0 {
+		if code := Run(args, nil, &out, &errOut, buildinfo.Current()); code != ExitOK || out.String() != want || errOut.Len() != 0 {
 			t.Fatalf("msm %v: exit %d stderr %q\ngot:\n%s", args, code, errOut.String(), out.String())
 		}
 	}

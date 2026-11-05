@@ -2,49 +2,41 @@
 
 A single init script which makes running multiple Minecraft/Bukkit servers easier for us admins.
 
-## Go Port
+## The Go port
 
-This fork is beginning a behavior-compatible Go port of MSM. The original Bash
-implementation remains the pinned reference while the port is developed; it is
-not yet replaced.
+This fork is a behavior-compatible Go port of MSM: one static executable,
+`msm`, with the original server-first commands (`msm <server> start`,
+`msm survival backup`, ...). The original Bash implementation, its sourced
+configuration, installers and shunit suite are no longer in the source tree
+(they remain in git tag `legacy-bash-final`, pinned to upstream
+[`7a9d120`](https://github.com/msmhq/msm/commit/7a9d120d6b93f2f62178a60416955eea2065c5ce));
+`msm` runs no shell and no Bash manager, only GNU screen, Java and the helpers
+you choose ([audit](docs/audit.md)).
 
-* Read the [compatibility contract](docs/compatibility/README.md).
-* Review the [approved safety deviations](docs/compatibility/deviations.md).
-* Track the [Go-port roadmap](https://github.com/thehatchcloud/msm/issues/21).
+* [Release notes](docs/release-notes.md) and the [support matrix](docs/support-matrix.md):
+  what is required, what is optional, what is validated, what differs.
+* [Install and update](docs/install.md); [migrate from the Bash manager](docs/migration.md) and roll back.
+* [Operate, back up, restore and recover](docs/operations.md); the [command reference](docs/cli.md);
+  [scheduled maintenance](docs/maintenance.md); [RAM worlds](docs/ram-worlds.md).
+* The [compatibility contract](docs/compatibility/README.md), the
+  [parity matrix](docs/compatibility/parity.md) and the
+  [approved deviations](docs/compatibility/deviations.md).
+* [Development and CI](docs/development.md), [releases](docs/release.md),
+  [dependency and license review](docs/dependencies.md).
 
-The Go foundation uses Cobra for help, version, flags, and shell completion,
-and Viper for native configuration (currently the `debug` setting only).
-Every command is implemented in Go; see the [command reference](docs/cli.md),
-[installing and updating](docs/install.md) and [releases](docs/release.md). Build it with the pinned Go toolchain using
-`CGO_ENABLED=0 go build -o bin/msm ./cmd/msm`; it does not call the Bash
-manager, but it manages the servers its configuration names, so try it on a test
-installation first. See [development and CI](docs/development.md)
-for tests, four-platform builds, artifacts, and review policy.
-
-The quick installers below belong to the original Bash implementation, not the
-Go port. Do not use them to install the Go development artifacts.
-
-## Quick Installers
-
-Install MSM on a **debian box**:
-
-    wget -q http://git.io/Sxpr9g -O /tmp/msm && bash /tmp/msm
-
-Or install MSM under **RedHat**:
-
-	wget -q http://git.io/lu0ULA -O /tmp/msm && bash /tmp/msm
-
-Or [suggest a new platform][issues].
+Build it with the pinned Go toolchain: `make build` (or
+`CGO_ENABLED=0 go build -o bin/msm ./cmd/msm`). Publishing a release is not
+deploying it; try it on a test installation first.
 
 ## Getting Started
 
-* [Install][install] MSM on your box.
-* [Visit the docs][docs] for help with getting started.
+* [Install](docs/install.md) MSM on your box.
+* Read the [operations guide](docs/operations.md) to get started.
 * Fork and contribute your own modifications.
 * Not a coder? [Post an issue][issues] with your idea for MSM instead.
 * Read the [changelog][changelog] to get a picture of how MSM has evolved over time.
 
-MSM is released under the GPLv3 licence, which is included in the repository [here][licence]. I'm open to suggestions where licencing is concerned.
+MSM is released under the GPLv3 licence, which is included in the repository [here](LICENSE.markdown), with the upstream copyright and attribution. I'm open to suggestions where licencing is concerned.
 
 ## Features
 
@@ -57,7 +49,7 @@ As well as starting, stopping and restarting MSM has the following features:
 * Load world's into RAM for faster access (reduces lag).
 * Easily configurable global defaults, with per server overrides if needed.
 * Apply server commands to one, multiple, or all servers in one go (useful for whitelisting a player on all servers.)
-* Tab completion for all commands, makes everything faster and getting started a breeze.
+* Tab completion for all commands (`msm completion bash|zsh`), makes everything faster and getting started a breeze.
 * Keep server logs organsied by periodically "rolling" them.
 * Organises jar files into groups (such as minecraft and craftbukkit) and links each server to a single jar. Includes automated download of new versions.
 * Plethora of in-game commands (whitelist, blacklist, operator, gamemode, kick, say, time, toggledownfall, save)
@@ -70,7 +62,7 @@ As well as starting, stopping and restarting MSM has the following features:
 ## Upcoming features
 
 * **QuickBackup:** If you store your backups non-locally (maybe on a NAS), QuickBackup optionally creates a backup locally for speed, and then moves it after your players are building again! My initial testing shows a 54 second network backup confaltes to 23 seconds of in-game time.
-* **Restore:** Roll-back to an old world or whole server backup automatically.
+* **Restore:** Roll-back to an old world or whole server backup automatically (today restoring is a documented manual copy, see [operations](docs/operations.md#restoring)).
 
 
 ## Versioning
@@ -96,8 +88,5 @@ This code grew out of an old version of [Ahtenus' Minecraft Init Script][ahtenus
 
 [we-snapshot]: http://wiki.sk89q.com/wiki/WorldEdit/Snapshots
 [ahtenus-minecraft-init]: https://github.com/Ahtenus/minecraft-init
-[docs]: http://msmhq.com/docs/
-[install]: http://msmhq.com/docs/installation.html
-[changelog]: https://github.com/msmhq/msm/blob/master/CHANGELOG.markdown
-[licence]: https://github.com/msmhq/msm/blob/master/LICENSE.markdown
-[issues]: https://github.com/msmhq/msm/issues
+[changelog]: CHANGELOG.markdown
+[issues]: https://github.com/thehatchcloud/msm/issues

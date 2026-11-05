@@ -1,7 +1,7 @@
 # Migrating from the Bash manager, and rolling back
 
-This moves an installation made by the legacy Bash manager (the `installers/`
-scripts, `/etc/init.d/msm`, `/etc/cron.d/msm`) to the single Go executable, and
+This moves an installation made by the legacy Bash manager (made by its installer scripts:
+`/etc/init.d/msm`, `/etc/cron.d/msm`) to the single Go executable, and
 back. It is a deliberate, supervised operation in a stopped maintenance window.
 Nothing here deploys to a host by itself, and CI only ever runs it on copies
 ([Rehearsal](#rehearse-it-first)). Legacy installations exist on Linux only, so

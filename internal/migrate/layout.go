@@ -19,7 +19,7 @@ import (
 type Layout struct {
 	Root string
 
-	// Legacy files, as the Bash installers (installers/common.sh) place them.
+	// Legacy files, as the upstream Bash installers placed them.
 	Conf       string // /etc/msm.conf, or whatever MSM_CONF names; read by both managers
 	Cron       string // /etc/cron.d/msm
 	Init       string // /etc/init.d/msm, the legacy executable

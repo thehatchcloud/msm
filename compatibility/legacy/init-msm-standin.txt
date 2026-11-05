@@ -1,0 +1,3 @@
+# Stand-in for the removed legacy init script (DEV-039). Migration reads only
+# the VERSION line and the file mode, so the tests need nothing more.
+VERSION="0.11.0"

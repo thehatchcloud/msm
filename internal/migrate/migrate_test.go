@@ -58,8 +58,18 @@ type fixture struct {
 	bin    string
 }
 
+var legacyFiles = map[string]string{
+	"msm.conf": "msm.conf", "cron/msm": "cron-msm.txt",
+	"init/msm": "init-msm-standin.txt", "bash_completion/msm": "bash-completion-standin.txt",
+}
+
 func readRepo(t *testing.T, rel string) []byte {
 	t.Helper()
+	// The Bash manager was removed from the tree (DEV-039); the files a
+	// legacy installation holds are the inert copies and stand-ins here.
+	if m, ok := legacyFiles[rel]; ok {
+		rel = filepath.Join("compatibility", "legacy", m)
+	}
 	data, err := os.ReadFile(filepath.Join("..", "..", rel))
 	if err != nil {
 		t.Fatal(err)

@@ -3,8 +3,8 @@
 This is the manual installation of the single `msm` executable. There is no
 installer script: nothing here downloads or runs code, installs a package,
 creates a user, or enables or starts a service unless you run the command that
-says so. The inherited `installers/*.sh` and `init/` files belong to the
-original Bash manager (DEV-037); do not use them for this executable.
+says so. The inherited Bash installers and init files were removed from this tree
+(DEV-037, DEV-039); there is nothing to run but the executable.
 
 Supported: Linux and macOS, on amd64 and arm64.
 
