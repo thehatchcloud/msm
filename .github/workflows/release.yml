@@ -1,0 +1,295 @@
+name: Release
+
+# Builds, validates, signs and stages a release as a DRAFT GitHub release.
+# docs/release.md explains the trust model; this file is its only publisher.
+#
+# - It runs only from "Run workflow" on master. Pull requests, pushes and tags
+#   never reach it, so no untrusted code can run beside the signing key.
+# - The executables are built once, without any secret (the public key is a
+#   repository variable). The same files are then run on every native runner,
+#   and the evidence records their SHA-256, so what is signed is what ran.
+# - Only the last job holds the signing key. It sits in the "release"
+#   environment, which must be configured with required reviewers.
+# - The result is a draft. A maintainer reads it and publishes it; the tag is
+#   created at that moment, at the commit that was built.
+#
+# One-time setup (repository settings):
+#   Variables:  RELEASE_PUBLIC_KEY  the output of `msm-release pubkey`
+#   Environment "release": required reviewers, deployment branches limited to
+#               master, and the secret RELEASE_SIGNING_KEY (the keygen file's
+#               content). Do not add the key as a repository secret.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, X.Y.Z (no v, no pre-release)"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      commit: ${{ steps.plan.outputs.commit }}
+      url: ${{ steps.plan.outputs.url }}
+    steps:
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          PUBLIC_KEY: ${{ vars.RELEASE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$*"; exit 1; }
+          [ "$GITHUB_REPOSITORY" = "thehatchcloud/msm" ] || fail "releases are made from thehatchcloud/msm only"
+          [ "$GITHUB_REF" = "refs/heads/master" ] || fail "release from master, not $GITHUB_REF"
+          echo "$VERSION" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' || fail "version must be X.Y.Z, not '$VERSION'"
+          [ -n "$PUBLIC_KEY" ] || fail "set the RELEASE_PUBLIC_KEY repository variable (docs/release.md)"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$VERSION" >/dev/null 2>&1; then
+            fail "tag v$VERSION already exists"
+          fi
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            fail "a release v$VERSION already exists"
+          fi
+          # The commit must already have passed the two aggregate gates.
+          runs="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" --paginate --jq '.check_runs[] | [.name, .conclusion] | @tsv')"
+          for gate in "Go checks" "Native validation checks"; do
+            printf '%s\n' "$runs" | grep -Fxq "$(printf '%s\tsuccess' "$gate")" || fail "'$gate' has not succeeded on $GITHUB_SHA"
+          done
+          {
+            echo "version=$VERSION"
+            echo "commit=$GITHUB_SHA"
+            echo "url=https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build the four executables
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      URL: ${{ needs.plan.outputs.url }}
+      PUBLIC_KEY: ${{ vars.RELEASE_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ needs.plan.outputs.commit }}"
+          # The flags make release uses (Makefile), with the key and location
+          # compiled in. Nothing here is secret.
+          ld="-s -w -X github.com/thehatchcloud/msm/internal/buildinfo.version=$VERSION -X github.com/thehatchcloud/msm/internal/buildinfo.commit=$GITHUB_SHA -X github.com/thehatchcloud/msm/internal/buildinfo.updateKeys=$PUBLIC_KEY -X github.com/thehatchcloud/msm/internal/buildinfo.updateURL=$URL"
+          mkdir -p "$RUNNER_TEMP/bin"
+          for p in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            CGO_ENABLED=0 GOOS="${p%/*}" GOARCH="${p#*/}" go build -trimpath -ldflags="$ld" -o "$RUNNER_TEMP/bin/msm-${p%/*}-${p#*/}" ./cmd/msm
+          done
+          (cd "$RUNNER_TEMP/bin" && sha256sum msm-*)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-binaries
+          path: ${{ runner.temp }}/bin/
+          if-no-files-found: error
+          retention-days: 7
+
+  # The suite of validate.yml, run against the release executables. Every
+  # target and Java version must pass; there is no "skip" and no unavailable
+  # runner is ignored: a missing runner fails the job and blocks the release.
+  validate:
+    name: Validate (${{ matrix.os }}/${{ matrix.arch }}, Java ${{ matrix.java }})
+    needs: [plan, build]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: ubuntu-24.04, os: linux, arch: amd64, jvm: X64, java: "17"}
+          - {runner: ubuntu-24.04, os: linux, arch: amd64, jvm: X64, java: "21"}
+          - {runner: ubuntu-24.04-arm, os: linux, arch: arm64, jvm: arm64, java: "17"}
+          - {runner: ubuntu-24.04-arm, os: linux, arch: arm64, jvm: arm64, java: "21"}
+          - {runner: macos-15-intel, os: darwin, arch: amd64, jvm: X64, java: "17"}
+          - {runner: macos-15-intel, os: darwin, arch: amd64, jvm: X64, java: "21"}
+          - {runner: macos-15, os: darwin, arch: arm64, jvm: arm64, java: "17"}
+          - {runner: macos-15, os: darwin, arch: arm64, jvm: arm64, java: "21"}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-binaries
+          path: ${{ runner.temp }}/bin
+      - name: Install GNU screen (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends screen
+      - name: Install GNU screen (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          brew install screen
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+      - name: Select Java ${{ matrix.java }}
+        env:
+          JAVA_VERSION: ${{ matrix.java }}
+          JVM_ARCH: ${{ matrix.jvm }}
+        run: |
+          var="JAVA_HOME_${JAVA_VERSION}_${JVM_ARCH}"
+          home="${!var:-}"
+          if [ -z "$home" ] || [ ! -x "$home/bin/java" ]; then
+            echo "::error::this runner image has no Java ${JAVA_VERSION} ($var is unset): it cannot validate this target"
+            exit 1
+          fi
+          echo "JAVA_HOME=$home" >> "$GITHUB_ENV"
+          echo "$home/bin" >> "$GITHUB_PATH"
+      - name: Record the toolchain
+        run: |
+          uname -srm
+          screen -v || true
+          java -version
+          test "$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')" = "${{ matrix.arch }}"
+      - name: Prepare a RAM volume (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          test "$(stat -f -c %T /dev/shm)" = tmpfs
+          sudo install -d -o "$(id -u)" -g "$(id -g)" /dev/shm/msm-e2e
+          echo "MSM_E2E_RAMDIR=/dev/shm/msm-e2e" >> "$GITHUB_ENV"
+      - name: Prepare a RAM volume (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          dev="$(hdiutil attach -nomount ram://131072 | tr -d '[:space:]')"
+          diskutil erasevolume HFS+ MSMRAM "$dev"
+          mkdir -p /Volumes/MSMRAM/e2e
+          echo "MSM_E2E_RAMDIR=/Volumes/MSMRAM/e2e" >> "$GITHUB_ENV"
+      - name: Build the stand-in server and the test program
+        run: |
+          chmod +x "$RUNNER_TEMP/bin/msm-${{ matrix.os }}-${{ matrix.arch }}"
+          javac --release 17 -d "$RUNNER_TEMP/fake" internal/e2e/testdata/FakeServer.java
+          jar cfe "$RUNNER_TEMP/server.jar" FakeServer -C "$RUNNER_TEMP/fake" FakeServer.class
+          go test -c -o "$RUNNER_TEMP/e2e.test" ./internal/e2e
+      - name: Run the end-to-end suite on the release executable
+        working-directory: internal/e2e
+        env:
+          MSM_E2E: "1"
+          MSM_E2E_COMMIT: ${{ needs.plan.outputs.commit }}
+          MSM_E2E_EVIDENCE: ${{ runner.temp }}/evidence
+        run: |
+          export MSM_E2E_BIN="$RUNNER_TEMP/bin/msm-${{ matrix.os }}-${{ matrix.arch }}" MSM_E2E_JAR="$RUNNER_TEMP/server.jar"
+          "$RUNNER_TEMP/e2e.test" -test.v -test.timeout=20m
+      - name: Run the root privilege checks (Linux)
+        if: runner.os == 'Linux'
+        working-directory: internal/e2e
+        env:
+          MSM_E2E: "1"
+          MSM_E2E_COMMIT: ${{ needs.plan.outputs.commit }}
+          MSM_E2E_EVIDENCE: ${{ runner.temp }}/evidence
+        run: |
+          sudo --preserve-env env "PATH=$PATH" "MSM_E2E_BIN=$RUNNER_TEMP/bin/msm-${{ matrix.os }}-${{ matrix.arch }}" "MSM_E2E_JAR=$RUNNER_TEMP/server.jar" \
+            MSM_E2E_USER=nobody "$RUNNER_TEMP/e2e.test" -test.v -test.run '^TestUserPermissions$' -test.timeout=10m
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: release-evidence-${{ matrix.os }}-${{ matrix.arch }}-java${{ matrix.java }}
+          path: ${{ runner.temp }}/evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  # The only job that sees the signing key. It waits for a reviewer.
+  sign:
+    name: Sign and stage a draft release
+    needs: [plan, build, validate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      COMMIT: ${{ needs.plan.outputs.commit }}
+      PUBLIC_KEY: ${{ vars.RELEASE_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-binaries
+          path: ${{ runner.temp }}/bin
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-evidence-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/evidence
+      - name: Package and sign
+        env:
+          SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$COMMIT"
+          [ -n "$SIGNING_KEY" ] || { echo "::error::the release environment has no RELEASE_SIGNING_KEY secret"; exit 1; }
+          umask 077
+          key="$RUNNER_TEMP/release.key"
+          printf '%s\n' "$SIGNING_KEY" > "$key"
+          trap 'rm -f "$key"' EXIT
+          # The binaries have this key compiled in: refuse any other.
+          test "$(go run ./cmd/msm-release pubkey -key "$key")" = "$PUBLIC_KEY"
+          out="$RUNNER_TEMP/release"
+          bins=""
+          for p in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            bins="$bins -bin $p=$RUNNER_TEMP/bin/msm-${p%/*}-${p#*/}"
+          done
+          go run ./cmd/msm-release package -key "$key" -version "$VERSION" -commit "$COMMIT" -license LICENSE.markdown -out "$out" $bins
+          go run ./cmd/msm-release verify -pubkey "$PUBLIC_KEY" -dir "$out"
+          # Every platform and Java version must have run these executables.
+          go run ./cmd/msm-release evidence -dir "$RUNNER_TEMP/evidence" -commit "$COMMIT" -release "$out" -pubkey "$PUBLIC_KEY"
+          rm -f "$key"
+      - name: Stage a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/release"
+          tar -czf "$out/evidence-$VERSION.tar.gz" -C "$RUNNER_TEMP/evidence" .
+          notes="Release $VERSION of commit $COMMIT.
+
+          Built once, run on every platform and Java 17 and 21, then signed. Verify with: msm update (or docs/release.md). Runtime evidence is attached as evidence-$VERSION.tar.gz; the run is $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+
+          Validation used the console stand-in server, not a Minecraft jar (docs/validation.md)."
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft --target "$COMMIT" --title "msm $VERSION" --notes "$notes"
+          gh release upload "v$VERSION" --repo "$GITHUB_REPOSITORY" \
+            "$out"/manifest.json "$out"/manifest.json.sig "$out"/msm-"$VERSION"-*.tar.gz "$out/evidence-$VERSION.tar.gz"
+          echo "Draft release v$VERSION is staged. Review it and publish it from the Releases page."

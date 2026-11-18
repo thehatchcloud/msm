@@ -1290,9 +1290,9 @@ These files are test artifacts, not approved releases, installers or deployed
 applications. Do not overwrite `/usr/local/bin/msm` or the existing init script.
 The inherited automatic tag-to-release workflow is removed by this change.
 Release packaging, signing and the verified updater are P15 (see
-[release.md](release.md)); publishing remains P17 work. There is intentionally
-no replacement release publishing workflow yet, so CI cannot publish an
-unreviewed Go release.
+[release.md](release.md)). Publishing is the manual `release.yml` (P17): master
+only, validated on the exact executables, signed in a reviewed environment, and
+staged as a draft. CI and pull requests cannot publish a release.
 
 ## Installation and updates (P15)
 
